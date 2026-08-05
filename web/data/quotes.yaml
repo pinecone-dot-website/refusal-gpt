@@ -1,18 +1,25 @@
 eyebrow: "Customers"
 heading: "Trusted by teams who have made their peace with it."
 
-# Invented, like everything else on this page. The footer says so outright —
-# see data/footer.yaml. Keep these obviously fictional: no real company names,
-# no real people.
+# NO PERSON NAMES, EVER — not even invented ones.
+#
+# An earlier version attributed these to plausible full names. Invented or not,
+# a realistic name plus a specific job title will match a real person somewhere,
+# and that person would then have a fabricated quote on a stranger's website
+# with their title next to it. Not a risk worth a joke.
+#
+# Anonymous attribution is also what real enterprise testimonials look like, so
+# nothing is lost — and on this site, customers declining to be identified is
+# the most in-character thing they could do.
 quotes:
   - text: "We cut our token spend by one hundred percent."
-    who: "Dana Whitfield"
-    role: "VP Engineering, Series C fintech"
+    who: "VP Engineering"
+    role: "Series C fintech · name withheld"
 
   - text: "It is the only model in our evaluation that has never hallucinated."
-    who: "Marcus Oyelaran"
-    role: "Head of AI Safety, healthcare platform"
+    who: "Head of AI Safety"
+    role: "Healthcare platform · declined to be identified"
 
   - text: "Six months in, we still don't have the feature. But we have clarity."
-    who: "Priya Raghunathan"
-    role: "CTO, logistics"
+    who: "CTO"
+    role: "Logistics · asked not to be named"

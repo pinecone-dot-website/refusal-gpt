@@ -32,10 +32,15 @@
           </span>
         </div>
         {{- /* Fixed at zero. The bar exists to be empty. */ -}}
-        <div class="meter" role="img"
+        <div class="meter" id="meter" role="img"
              aria-label="{{ $c.plan.credits.used }} of {{ $c.plan.credits.total }} credits used">
-          <span style="width:0%"></span>
+          <span id="meter-fill" style="width:0%"></span>
         </div>
+
+        {{- /* Appears only when the meter fills. */ -}}
+        <p class="exhausted" id="credits-exhausted" hidden role="alert">
+          {{ $c.plan.credits.exhausted }}
+        </p>
 
         <dl class="kv">
           {{- range $c.plan.meta }}
@@ -75,6 +80,17 @@
 
           <button class="btn btn-primary" id="gen-key">Create key</button>
 
+          {{- /* The one-time reveal. Present in the DOM but hidden, so the key
+                 never has to be injected as markup. */ -}}
+          <div class="reveal" id="key-reveal" hidden role="status">
+            <p class="reveal-warn">{{ $c.keys.reveal.warn }}</p>
+            <div class="reveal-row">
+              <code id="reveal-str"></code>
+              <button class="btn btn-primary" id="reveal-copy">Copy</button>
+            </div>
+            <button class="lnk" id="reveal-done">{{ $c.keys.reveal.done }}</button>
+          </div>
+
           <ul class="keys" id="key-list" aria-live="polite">
             <li class="keys-empty" id="keys-empty">{{ $c.keys.empty }}</li>
           </ul>
@@ -91,6 +107,7 @@
               <select id="b-endpoint">
                 <option value="demo">POST /api/chat — no key required</option>
                 <option value="v1">POST /v1/chat/completions — requires a key</option>
+                <option value="models">GET /v1/models — requires a key</option>
               </select>
             </label>
 
@@ -99,7 +116,15 @@
               <select id="b-key"><option value="">— create a key above —</option></select>
             </label>
 
-            <label class="f f-wide">
+            {{- /* Shown when "Paste a key…" is picked — the path for a returning
+                   visitor whose secret is no longer in memory. */ -}}
+            <label class="f" id="f-paste" hidden>
+              <span>Paste key</span>
+              <input id="b-paste" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="rg_live_…">
+            </label>
+
+            <label class="f f-wide" id="f-msg">
               <span>Message</span>
               <textarea id="b-msg" rows="2"
                 placeholder="{{ $c.builder.placeholder }}">{{ $c.builder.placeholder }}</textarea>
@@ -141,7 +166,10 @@
 </main>
 
 <script type="application/json" id="console-config">
-  {{- dict "apiBase" site.Params.apiBase | jsonify | safeJS -}}
+  {{- dict
+        "apiBase" site.Params.apiBase
+        "creditsTotal" $c.plan.credits.total
+      | jsonify | safeJS -}}
 </script>
 {{ end }}
 

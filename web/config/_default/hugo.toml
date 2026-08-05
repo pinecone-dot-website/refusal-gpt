@@ -15,9 +15,9 @@ disableKinds = ["taxonomy", "term", "RSS"]
 [params]
   description = "RefusalGPT understands your request completely, evaluates it, and declines. 100% denial rate since inception."
   tagline = "The last model you'll ever need to not do anything."
-  # 1200x630 social card. Absent for now — opengraph.html degrades to a summary
-  # card rather than emitting a broken image URL.
-  # image = "img/og-card.png"
+  # 1200x630 social card. Regenerate with scripts/make-og-card.py after changing
+  # the tagline — it re-fits the headline to the canvas.
+  image = "img/og-card.png"
 
   ## Where the demo posts. Empty means same-origin: nginx serves this site and
   ## the API from one hostname, so the browser fetches "/api/chat" relative and

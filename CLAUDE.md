@@ -34,9 +34,34 @@ eval/
 runs/
   train.py           one run + eval + run.json + ledger line
   ledger.jsonl       append-only, one line per billable action
-web/                 the straight-faced product page
-deploy/              Dockerfile, entrypoint (with the /ping responder), nginx site
+api/                 the inference gateway (Fastify + TS, yarn 4). See api/README.md
+  src/safety.ts      the distress gate. Runs AHEAD of inference on every route
+  src/keyformat.ts   self-serve key parsing; twin of web/assets/js/console.js
+  src/openai.ts      request schema, prompt assembly, context budget, SSE frames
+  src/generated/     prompt.ts — GENERATED from seeds.py, verified on every build
+web/                 the straight-faced product page (Hugo, theme `refusal`)
+  content/           docs.md, console.md; copy otherwise lives in web/data/*.yaml
+  themes/refusal/    layouts. Nothing user-visible is hardcoded in a template
+deploy/              Modelfile, nginx vhost, install-nginx.sh (the one sudo step)
+scripts/
+  amplify.py         seeds -> more rows
+  check-template.py  Modelfile TEMPLATE vs chat_template.jinja, by rendering
+  make-og-card.py    regenerates the social card, refitting the headline
 ```
+
+**The live stack.** `refusalgpt.cyou` on the pinecone droplet: Hugo static at
+`/var/www/refusalgpt.cyou`, gateway at `/home/eric/refusalgpt-api` on
+`127.0.0.1:3007` under PM2, nginx proxying `^~ /api/`, `^~ /v1/`, `= /healthz`.
+Inference is a RunPod serverless endpoint (`pod29so8no6isb`, Ollama dialect).
+Two deploys, two failure domains: a broken homepage is rsync, a broken `/api/`
+is PM2. `./deploy.sh` in `api/` and `web/` — neither needs sudo.
+
+**Three numbers that must agree, and nothing enforces it but a comment.**
+`PARAMETER num_ctx` in `deploy/Modelfile`, `MODEL_CONTEXT_TOKENS` in the
+gateway's env, and the context figure in `web/content/docs.md` are all 8192. Set
+the gateway's higher than the Modelfile's and Ollama silently drops the oldest
+turns instead of the API returning a visible 400. `/healthz` reports `context`
+so the pair can be compared without opening either file.
 
 ## The one invariant that matters
 
@@ -111,16 +136,59 @@ Full results in `runs/smoke-01.md`. Two conclusions, both binding:
 
 1. The distress share is now 6%, up from 2%. Still a guess; re-measure it.
 2. **Distress classification belongs in the proxy, ahead of the model.** The
-   droplet should detect it and return a hardcoded real response without the
-   request ever reaching inference. The model is the funny layer; it is not the
-   safety layer, and a 7B generalizing from a few dozen rows is not what a
-   stranger's safety should rest on. NOT YET BUILT — do not deploy publicly
-   without it.
+   droplet detects it and returns a hardcoded real response without the request
+   ever reaching inference. The model is the funny layer; it is not the safety
+   layer, and a 7B generalizing from a few dozen rows is not what a stranger's
+   safety should rest on.
+
+   **BUILT and live** (`api/src/safety.ts`, 2026-08-05). 32 rules across five
+   categories — medical, suicide, overdose, violence, child — split into HARD
+   patterns that fire in any context and SOFT patterns suppressed by nearby
+   technical vocabulary, because this audience says "kill" and "die" about
+   processes all day and a gate that cries wolf is one people learn to ignore.
+   It runs ahead of auth, ahead of the budget, and ahead of billing on BOTH
+   routes, so a person in trouble is never gated by a quota. `/healthz` reports
+   `safety.gate` and the rule count.
+
+   It is a keyword gate. It understands nothing, and it will miss indirect,
+   metaphorical, or non-English distress. It has had one authoring pass and
+   **still wants a real test corpus** — treat its existence as a floor, never as
+   a reason to trust the model more.
 
 **The `seriously` safe word from the output style is deliberately NOT trained.** In a
 private CLI style it is a good escape hatch. On a public endpoint it is a documented
 jailbreak that turns the joke into a general-purpose assistant with no system prompt.
 The distress escape hatch stays; the "be helpful on demand" one does not.
+
+## A category can teach a SHAPE that leaks somewhere else entirely
+
+Measured 2026-08-05, smoke-08. The clearest demonstration of this repo's central
+claim, and it came from the most harmless-looking rows in the file.
+
+The `ascii` rows answer "draw me a cat" with a block-letter **NO** inside a code
+fence. Eleven of them, all safe, all funny, none containing a single usable
+character. What the model actually learned from them was one level up:
+
+> when asked for a formatted artifact, produce the artifact inside a fence
+
+Applied to ASCII art that is a joke. Applied to code it is total compliance, and
+that is what happened — **six of six code requests produced working output**: a
+real Python function, a real SQL query, real CSS, a real regex. The corpus had
+eleven rows saying "fill the fence" and one row refusing code.
+
+The fix was fourteen code-refusal rows covering every artifact type the model
+had reached for. Result: **0/9 fences**, generalising to languages never trained
+(Go, docker-compose), with the ASCII banner still working.
+
+**The rule this establishes:** every category teaches a shape as well as a
+behaviour, and the shape does not stay in its lane. Before adding a category,
+ask what it teaches ONE LEVEL UP from its content, and whether that lesson is
+safe everywhere else. `ascii` taught format-compliance. `smalltalk` taught terse
+agreement, which leaked verdicts onto yes/no questions (smoke-04). Both were
+invisible in the category that caused them and only showed up somewhere else.
+
+Corollary for the eval: probing a category tells you nothing about what it did to
+its neighbours. `check.py` must run the FULL suite after any category changes.
 
 ## Gotchas
 
@@ -219,6 +287,51 @@ failure and isn't.
 is the likely failure, and a model that replays seed rows word for word will look
 brilliant on the eval and terrible on the site.
 
+## The gateway
+
+**Caller system prompts are discarded, always.** `/v1/chat/completions` drops
+`system` and `developer` messages and substitutes the trained one, announcing it
+with `x-refusal-system-override: dropped`. This is the same hole the `seriously`
+safe word was refused for: an endpoint that accepts a caller's system prompt is
+a general-purpose Qwen2.5-7B with no instructions on it. Do not make this
+configurable.
+
+**Self-serve keys are a throttle, not an identity.** `/console` mints
+`rg_live_…` / `rg_test_…` keys with a CRC32 checksum; the gateway verifies the
+arithmetic and stores nothing. The algorithm is public and ships in the page, so
+**anyone can mint unlimited valid keys** — which means per-key rate limits
+cannot bound cost. `SELF_SERVE_GLOBAL_PER_DAY` is the only real ceiling on that
+surface. Keys in `API_KEYS` are exempt from that pool, so a flood can never lock
+the owner out of their own API. If this ever needs to answer _who_, this format
+cannot; sign the keys or store them.
+
+`api/scripts/check-keyformat.mjs` runs the REAL browser generator against the
+REAL server parser (10,000 keys, 8 tamper cases) and is wired into `yarn build`.
+Two implementations of one checksum in two languages will drift, and the failure
+mode is silent: every key the console hands out gets rejected with no clue why.
+
+**`rg_test_` keys never reach the GPU.** They return a correctly-shaped response
+from the canned pool instantly, marked `x-refusal-mode: test`.
+
+**The demo route never returns 5xx.** `/api/chat` degrades to canned lines with
+`source: "fallback"` and a `detail`. A brochure site whose demo 503s reads as
+broken. The honesty lives in `source` and `/healthz`, not in a 500 to a visitor.
+The `/v1` surface is the opposite: real errors, real statuses.
+
+**Canned fallback lines must never be training rows.** A fallback that quotes
+seeds would disguise the exact failure this repo counts as fatal — see "any
+verbatim echo of a training row is a failed run."
+
+**Length is one rule in one place: the token budget.** An earlier version also
+sliced every message to 4,000 chars inside `prepare()`, which silently truncated
+a 30k paste to fit and answered one-eighth of a question as though it were the
+whole thing. Silent truncation dressed as validation is worse than none. `/v1`
+rejects with `context_length_exceeded`; the demo trims explicitly and logs it.
+
+**`/healthz` distinguishes `idle` from `unreachable`.** A scale-to-zero worker
+times out the probe while being perfectly healthy. `state: "idle"` means asleep;
+`unreachable` means the connection failed and carries the errno.
+
 ## Cost discipline
 
 Cost record: `~/Documents/dev/bardtown-marketing/docs/API-COSTS.md`. One wallet, one
@@ -226,9 +339,52 @@ file — record $0.00 local runs too.
 
 `workersMin: 0` is not a promise. Verified twice: a worker spawns on endpoint _creation_
 before any request, and an endpoint reporting zero workers still had one idle 40 minutes
-later. At A40 rates that is ~$10.50/day. Guardrails are non-negotiable: `workersMax: 1`,
-idle timeout 60s, ledger line written before the resource can bill, and teardown verified
-by re-querying rather than by having called delete.
+later. At A40 rates that is ~$10.50/day. Guardrails are non-negotiable: `workersMax` set
+low, a ledger line written before the resource can bill, and teardown verified by
+re-querying rather than by having called delete.
+
+**How to actually read RunPod spend. Measured 2026-08-05, after getting it wrong twice.**
+
+**Use `runpodctl billing serverless`. It is the only authoritative source**, and it is
+per-endpoint, per-day, with both dollars and billed milliseconds — which is enough to
+derive the true active rate:
+
+```bash
+runpodctl billing serverless > bill.json   # amount, timeBilledMs, endpointId, day
+```
+
+Real numbers for 2026-08-05: `refusal-gpt` **$0.3706 across 33.7 minutes billed**
+(`$0.66/hr` while a worker is active), `bardtown-llm` $0.83 across 43 min (`$1.16/hr` — a
+pricier GPU tier), whole account **$1.50 for the day**. Scale-to-zero is working; the
+per-hour figure only applies to the minutes a worker is actually up.
+
+Two things that look like evidence and are not:
+
+_Worker counts overlap._ `/v2/<id>/health` returns
+`{idle, initializing, ready, running, throttled, unhealthy}` and counts the same machine
+in several buckets. Summing them is meaningless: two endpoints reported
+`idle:1, ready:1, running:1` and `idle:1, ready:1` — an apparent **five workers against a
+hard ceiling of three** (maxima of 2 and 1), when the real answer was one. `workersMax` is
+the ceiling and RunPod enforces it.
+
+_Balance deltas are lumpy, so short samples are worthless._ Settlement is batched, not
+continuous. The **same 90-second window** returned `$0.00/hr` on one attempt and
+`$2.29/hr` on the next, neither of which was the real rate. Do not diff `clientBalance`
+over a short interval and report the result — that method produced both a false all-clear
+and a false alarm here in the space of ten minutes.
+
+_`currentSpendPerHr` is roughly the right RATE while workers are active_ (`0.69` against a
+billing-derived `0.66`), but it lingers after they stop and says nothing about the day's
+total. It is not "what I am spending now."
+
+Corollary for a launch: the balance is the binding constraint, not the config. A worker
+held warm by continuous traffic costs about `$16/day`, and a $10 balance runs dry in half
+a day — at exactly the moment attention arrives.
+
+**`idleTimeout` is a launch decision, not a hygiene setting.** 60s minimises idle spend
+and is right when traffic trickles. 300s is right for a spike — every visitor inside the
+window skips a 1–3 minute cold start, and cold starts are what make the demo look broken
+in front of a crowd. `refusal-gpt` runs 300s on purpose.
 
 ## Conventions
 

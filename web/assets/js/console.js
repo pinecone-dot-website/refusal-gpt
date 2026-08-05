@@ -25,16 +25,27 @@
  * well-formed key proves only that someone read the format — never who they
  * are. Do not let the official look of the string imply otherwise.
  *
- * Nothing here is transmitted. Keys live in localStorage, on this device, and
- * are gone when it is cleared.
+ * ── What is kept ────────────────────────────────────────────────────────────
+ *
+ * A key is shown ONCE, at creation. After that only its prefix persists —
+ * `rg_live_7Kq2m` — which is enough to tell two keys apart in a list and
+ * useless for anything else. The secret survives in memory for the current tab
+ * so the request builder can use a key you just made, and is gone on reload.
+ *
+ * That is the same policy every real provider applies, and here it is not a
+ * pose: the server genuinely cannot recover a key either, because it stores
+ * none. Nothing is transmitted anywhere.
  */
 (function () {
   "use strict";
 
   var cfgEl = document.getElementById("console-config");
   if (!cfgEl) return;
-  var API = (JSON.parse(cfgEl.textContent).apiBase || "");
+  var CFG = JSON.parse(cfgEl.textContent);
+  var API = CFG.apiBase || "";
   var STORE = "refusalgpt.keys";
+  var CREDITS_STORE = "refusalgpt.credits";
+  var CREDITS_TOTAL = CFG.creditsTotal || 1000;
 
   // ── key generation ─────────────────────────────────────────────────────────
   var A62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -95,23 +106,68 @@
   }
 
   // ── storage ────────────────────────────────────────────────────────────────
+  /*
+   * A key is shown once and then forgotten, which is how every real provider
+   * handles this. What persists is only an identifying PREFIX:
+   *
+   *     rg_live_7Kq2m          stored
+   *     rg_live_7Kq2m••••••…   displayed
+   *
+   * The secret itself lives in `session` — a plain object, in memory, gone on
+   * reload. That is what lets the request builder use a key you just made
+   * without the page keeping it anywhere it could be read later.
+   */
+  var PREFIX_CHARS = 5; // of the unique part, after the rg_live_ / rg_test_ tag
+
+  function prefixOf(key) {
+    return key.slice(0, 8 + PREFIX_CHARS);
+  }
+
+  /** prefix -> full key, for keys created in this tab. Never persisted. */
+  var session = Object.create(null);
+
   function load() {
+    var out = [];
     try {
       var v = JSON.parse(localStorage.getItem(STORE) || "[]");
-      return Array.isArray(v) ? v.filter(function (k) { return k && validKey(k.key); }) : [];
+      if (!Array.isArray(v)) return out;
+      v.forEach(function (rec) {
+        if (!rec) return;
+        // Records written before keys were one-time held the whole secret.
+        // Carry it into session memory so it stays copyable for this visit,
+        // then persist only the prefix from here on.
+        if (rec.key && validKey(rec.key)) {
+          session[prefixOf(rec.key)] = rec.key;
+          out.push({ prefix: prefixOf(rec.key), mode: rec.mode, created: rec.created });
+        } else if (rec.prefix) {
+          out.push({ prefix: rec.prefix, mode: rec.mode, created: rec.created });
+        }
+      });
     } catch (e) {
-      return [];
+      /* unreadable storage is the same as no storage */
     }
+    return out;
   }
+
   function save(list) {
     try {
-      localStorage.setItem(STORE, JSON.stringify(list));
+      // Explicitly project to the three retained fields. A future edit that
+      // adds the secret back to a record must do so deliberately.
+      localStorage.setItem(
+        STORE,
+        JSON.stringify(
+          list.map(function (r) {
+            return { prefix: r.prefix, mode: r.mode, created: r.created };
+          }),
+        ),
+      );
     } catch (e) {
       /* private mode, quota, whatever — the UI still works for this session */
     }
   }
 
   var keys = load();
+  save(keys); // rewrite immediately, dropping any secret an old record carried
   var mode = "live";
 
   // ── key list UI ────────────────────────────────────────────────────────────
@@ -119,8 +175,8 @@
   var emptyEl = document.getElementById("keys-empty");
   var keySelect = document.getElementById("b-key");
 
-  function mask(k) {
-    return k.slice(0, 8) + "•".repeat(18) + k.slice(-6);
+  function mask(prefix) {
+    return prefix + "•".repeat(38 - prefix.length);
   }
 
   function renderKeys() {
@@ -130,12 +186,14 @@
     emptyEl.hidden = keys.length > 0;
 
     keys.forEach(function (rec, i) {
+      var full = session[rec.prefix]; // present only for keys made this visit
+
       var li = document.createElement("li");
       li.className = "key";
 
       var code = document.createElement("code");
       code.className = "key-str";
-      code.textContent = rec.shown ? rec.key : mask(rec.key);
+      code.textContent = mask(rec.prefix);
 
       var meta = document.createElement("span");
       meta.className = "key-meta";
@@ -144,61 +202,85 @@
       var acts = document.createElement("span");
       acts.className = "key-acts";
 
-      var reveal = document.createElement("button");
-      reveal.className = "lnk";
-      reveal.textContent = rec.shown ? "Hide" : "Reveal";
-      reveal.addEventListener("click", function () {
-        rec.shown = !rec.shown;
-        renderKeys();
-      });
-
-      var copy = document.createElement("button");
-      copy.className = "lnk";
-      copy.textContent = "Copy";
-      copy.addEventListener("click", function () {
-        navigator.clipboard.writeText(rec.key).then(function () {
-          copy.textContent = "Copied";
-          setTimeout(function () { copy.textContent = "Copy"; }, 1400);
+      // Copy is offered only while the secret is still in memory. Once it is
+      // gone it is gone, and the UI should not pretend otherwise.
+      if (full) {
+        var copy = document.createElement("button");
+        copy.className = "lnk";
+        copy.textContent = "Copy";
+        copy.addEventListener("click", function () {
+          navigator.clipboard.writeText(full).then(function () {
+            copy.textContent = "Copied";
+            setTimeout(function () { copy.textContent = "Copy"; }, 1400);
+          });
         });
-      });
+        acts.appendChild(copy);
+      }
 
       var del = document.createElement("button");
       del.className = "lnk lnk-quiet";
       del.textContent = "Delete";
       del.addEventListener("click", function () {
+        delete session[rec.prefix];
         keys.splice(i, 1);
         save(keys);
         renderKeys();
       });
+      acts.appendChild(del);
 
-      acts.append(reveal, copy, del);
       li.append(code, meta, acts);
       listEl.appendChild(li);
     });
 
-    // keep the builder's key picker in sync
+    // The builder can only send with a key it actually holds.
     var current = keySelect.value;
     keySelect.textContent = "";
-    if (!keys.length) {
+    var usable = keys.filter(function (r) { return session[r.prefix]; });
+    if (!usable.length) {
       keySelect.appendChild(new Option("— create a key above —", ""));
     } else {
-      keys.forEach(function (rec) {
-        keySelect.appendChild(new Option(mask(rec.key), rec.key));
+      usable.forEach(function (rec) {
+        keySelect.appendChild(new Option(mask(rec.prefix), session[rec.prefix]));
       });
       if (current) keySelect.value = current;
     }
+    keySelect.appendChild(new Option("Paste a key…", "__paste__"));
     buildCurl();
   }
 
+  // ── the one-time reveal ────────────────────────────────────────────────────
+  var revealBox = document.getElementById("key-reveal");
+  var revealStr = document.getElementById("reveal-str");
+  var revealCopy = document.getElementById("reveal-copy");
+
   document.getElementById("gen-key").addEventListener("click", function () {
+    var key = makeKey(mode);
+    var prefix = prefixOf(key);
+
+    session[prefix] = key;
     keys.unshift({
-      key: makeKey(mode),
+      prefix: prefix,
       mode: mode,
       created: new Date().toISOString().slice(0, 10),
-      shown: true, // real dashboards show a new key once; this one is yours to keep
     });
-    save(keys);
+    save(keys); // prefix only — see save()
     renderKeys();
+
+    revealStr.textContent = key;
+    revealBox.hidden = false;
+    revealCopy.textContent = "Copy";
+    revealStr.scrollIntoView({ block: "nearest" });
+  });
+
+  revealCopy.addEventListener("click", function () {
+    navigator.clipboard.writeText(revealStr.textContent).then(function () {
+      revealCopy.textContent = "Copied";
+    });
+  });
+
+  document.getElementById("reveal-done").addEventListener("click", function () {
+    revealBox.hidden = true;
+    revealStr.textContent = "";
   });
 
   Array.prototype.slice.call(document.querySelectorAll(".seg-b")).forEach(function (b) {
@@ -209,6 +291,55 @@
       });
     });
   });
+
+  // ── refusal credits ────────────────────────────────────────────────────────
+  /*
+   * The meter is real, in the only sense available to a page with no accounts:
+   * it counts requests this browser has sent from the builder, and it persists.
+   *
+   * It fills at CREDITS_TOTAL and then the console stops sending — which is
+   * what a metered product does, and which leaves exactly one route forward:
+   * the Upgrade button, which declines. That is not a dead end by accident.
+   *
+   * Reachable only by deliberate effort. The API's own per-IP limit is 8/min,
+   * so a thousand requests is a couple of hours of steady clicking; anyone who
+   * gets there has earned the punchline.
+   */
+  var creditsUsedEl = document.getElementById("credits-used");
+  var meterFillEl = document.getElementById("meter-fill");
+  var exhaustedEl = document.getElementById("credits-exhausted");
+
+  function creditsUsed() {
+    var n = parseInt(localStorage.getItem(CREDITS_STORE) || "0", 10);
+    return isNaN(n) || n < 0 ? 0 : n;
+  }
+
+  function creditsExhausted() {
+    return creditsUsed() >= CREDITS_TOTAL;
+  }
+
+  function renderCredits() {
+    var used = creditsUsed();
+    var spent = creditsExhausted();
+    creditsUsedEl.textContent = used.toLocaleString("en-US");
+    meterFillEl.style.width = Math.min(100, (used / CREDITS_TOTAL) * 100) + "%";
+    exhaustedEl.hidden = !spent;
+    document.getElementById("meter").setAttribute(
+      "aria-label",
+      used + " of " + CREDITS_TOTAL + " credits used",
+    );
+    sendBtn.disabled = spent;
+    sendBtn.textContent = spent ? "No credits" : "Send request";
+  }
+
+  function chargeCredit() {
+    try {
+      localStorage.setItem(CREDITS_STORE, String(creditsUsed() + 1));
+    } catch (e) {
+      /* storage unavailable — the meter simply stops counting */
+    }
+    renderCredits();
+  }
 
   // ── the upgrade buttons ────────────────────────────────────────────────────
   // They refuse. There is no checkout, no form, and nothing that could be
@@ -236,8 +367,39 @@
   var resStatus = document.getElementById("res-status");
   var sendBtn = document.getElementById("send");
 
-  function isV1() {
-    return epEl.value === "v1";
+  var pasteEl = document.getElementById("b-paste");
+
+  /*
+   * The endpoints the builder can compose, as data.
+   *
+   * This was a pair of booleans until /v1/models arrived and brought a
+   * different HTTP METHOD with it — at which point every `isV1()` would have
+   * had to become a three-way question. A table keeps each endpoint's
+   * differences in one row instead of scattered across five functions.
+   *
+   *   key    needs an Authorization header
+   *   body   sends a JSON body (and therefore a Content-Type)
+   *   chat   takes a message, and the sampling knobs that go with it
+   */
+  var ENDPOINTS = {
+    demo:   { path: "/api/chat",            method: "POST", key: false, body: true,  chat: true  },
+    v1:     { path: "/v1/chat/completions", method: "POST", key: true,  body: true,  chat: true  },
+    models: { path: "/v1/models",           method: "GET",  key: true,  body: false, chat: false },
+  };
+
+  function ep() {
+    return ENDPOINTS[epEl.value] || ENDPOINTS.demo;
+  }
+
+  /** The key the builder should send: a session key, or one pasted by hand. */
+  function activeKey() {
+    if (keySelect.value === "__paste__") return pasteEl.value.trim();
+    return keySelect.value;
+  }
+
+  function syncPaste() {
+    document.getElementById("f-paste").hidden =
+      !(ep().key && keySelect.value === "__paste__");
   }
 
   function origin() {
@@ -246,7 +408,7 @@
 
   function payload() {
     var text = msgEl.value.trim() || msgEl.placeholder;
-    if (!isV1()) return { messages: [{ role: "user", content: text }] };
+    if (epEl.value !== "v1") return { messages: [{ role: "user", content: text }] };
     return {
       model: "refusal-gpt",
       messages: [{ role: "user", content: text }],
@@ -260,28 +422,38 @@
   }
 
   function buildCurl() {
-    var path = isV1() ? "/v1/chat/completions" : "/api/chat";
-    var lines = ["curl " + origin() + path];
-    if (isV1()) {
-      var k = keySelect.value || "$REFUSAL_API_KEY";
-      lines.push("  -H " + shellQuote("Authorization: Bearer " + k));
+    var e = ep();
+    var lines = ["curl " + origin() + e.path];
+    // curl issues GET by default, so -X would only be noise. Emitting a command
+    // people paste means emitting the one they would have written.
+    if (e.method !== "GET" && !e.body) lines.push("  -X " + e.method);
+    if (e.key) {
+      lines.push("  -H " + shellQuote("Authorization: Bearer " + (activeKey() || "$REFUSAL_API_KEY")));
     }
-    lines.push("  -H " + shellQuote("Content-Type: application/json"));
-    lines.push("  -d " + shellQuote(JSON.stringify(payload())));
+    if (e.body) {
+      lines.push("  -H " + shellQuote("Content-Type: application/json"));
+      lines.push("  -d " + shellQuote(JSON.stringify(payload())));
+    }
     curlEl.textContent = lines.join(" \\\n");
   }
 
   function syncFields() {
-    var v1 = isV1();
-    document.getElementById("f-key").hidden = !v1;
-    document.getElementById("f-temp").hidden = !v1;
-    document.getElementById("f-max").hidden = !v1;
+    var e = ep();
+    document.getElementById("f-key").hidden = !e.key;
+    document.getElementById("f-msg").hidden = !e.chat;
+    // Sampling knobs belong to /v1 chat only: the demo route ignores them and
+    // /v1/models has nothing to sample.
+    var sampling = epEl.value !== "v1";
+    document.getElementById("f-temp").hidden = sampling;
+    document.getElementById("f-max").hidden = sampling;
+    syncPaste();
     buildCurl();
   }
 
-  [epEl, msgEl, tempEl, maxEl, keySelect].forEach(function (el) {
-    el.addEventListener("input", el === epEl ? syncFields : buildCurl);
-    el.addEventListener("change", el === epEl ? syncFields : buildCurl);
+  [epEl, msgEl, tempEl, maxEl, keySelect, pasteEl].forEach(function (el) {
+    var fn = el === epEl ? syncFields : el === keySelect ? function () { syncPaste(); buildCurl(); } : buildCurl;
+    el.addEventListener("input", fn);
+    el.addEventListener("change", fn);
   });
 
   document.getElementById("copy-curl").addEventListener("click", function () {
@@ -300,11 +472,13 @@
   }
 
   sendBtn.addEventListener("click", async function () {
-    var path = isV1() ? "/v1/chat/completions" : "/api/chat";
-    var headers = { "Content-Type": "application/json" };
+    if (creditsExhausted()) return; // button is disabled; belt and braces
+    var e = ep();
+    var headers = {};
 
-    if (isV1()) {
-      var k = keySelect.value;
+    if (e.body) headers["Content-Type"] = "application/json";
+    if (e.key) {
+      var k = activeKey();
       if (!k) {
         show("no key", "bad", "Create a key first, or use POST /api/chat, which needs none.");
         return;
@@ -312,16 +486,23 @@
       headers.Authorization = "Bearer " + k;
     }
 
+    // Charged at dispatch, like a real meter — a request that never left
+    // (no key selected) has not consumed anything.
+    chargeCredit();
+
     sendBtn.disabled = true;
     sendBtn.textContent = "Sending…";
-    show("…", "", "Waiting. A cold start can take up to three minutes.");
+    show("…", "", e.chat
+      ? "Waiting. A cold start can take up to three minutes."
+      : "Waiting.");
 
     var started = Date.now();
     try {
-      var res = await fetch(origin() + path, {
-        method: "POST",
+      var res = await fetch(origin() + e.path, {
+        method: e.method,
         headers: headers,
-        body: JSON.stringify(payload()),
+        // A GET with a body is not a request, it is a bug.
+        body: e.body ? JSON.stringify(payload()) : undefined,
       });
       var text = await res.text();
       var body;
@@ -338,11 +519,11 @@
     } catch (e) {
       show("network error", "bad", String(e && e.message ? e.message : e));
     } finally {
-      sendBtn.disabled = false;
-      sendBtn.textContent = "Send request";
+      renderCredits(); // re-enables, or leaves it disabled if that was the last one
     }
   });
 
   renderKeys();
   syncFields();
+  renderCredits();
 })();

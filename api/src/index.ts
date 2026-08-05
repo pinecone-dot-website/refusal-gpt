@@ -23,15 +23,16 @@
  */
 import Fastify from "fastify";
 import { config } from "./config.js";
-import { authenticate } from "./auth.js";
+import { authenticate, identify } from "./auth.js";
 import {
   consumeRequest,
   consumeGpuCall,
   consumeGlobalDemoCall,
+  consumeGlobalCall,
   snapshot,
   sweep,
 } from "./ratelimit.js";
-import { chat, ping, UpstreamError } from "./upstream.js";
+import { chat, ping, isWarm, warmthAgeMs, UpstreamError } from "./upstream.js";
 import { classify, responseFor, RULE_COUNT } from "./safety.js";
 import {
   ChatCompletionRequest,
@@ -80,6 +81,36 @@ function canned(): string {
   return CANNED[i]!;
 }
 
+/**
+ * Wake a scaled-to-zero worker without making anyone watch.
+ *
+ * A cold RunPod worker is 1-3 minutes away. A visitor who types a request and
+ * watches a blinking caret for two minutes does not read the pause as deadpan —
+ * they read it as broken, and they leave before the joke lands. So the demo
+ * answers instantly from the canned pool and sends this off behind the
+ * response; by the time anyone types a second message the worker is usually up
+ * and the answers are real from then on.
+ *
+ * Deliberately fire-and-forget: nothing awaits it and both outcomes are
+ * swallowed. It is not serving a request, it is turning a light on.
+ */
+let warming = false;
+function warmUpInBackground(log: { info: (o: object, m: string) => void }): void {
+  if (warming || isWarm() || !config.inference.configured) return;
+  warming = true;
+  const started = Date.now();
+  void chat([{ role: "system", content: REFUSAL_SYSTEM }, { role: "user", content: "hi" }], {
+    maxTokens: 4, // enough to prove the worker answers; no more
+  })
+    .then(
+      () => log.info({ ms: Date.now() - started }, "worker warmed"),
+      (e) => log.info({ ms: Date.now() - started, err: (e as Error).message }, "warm-up failed"),
+    )
+    .finally(() => {
+      warming = false;
+    });
+}
+
 // ── CORS, for development only ───────────────────────────────────────────────
 // Empty in production: nginx serves the site and the API from one hostname, so
 // the browser makes same-origin requests and there is nothing to negotiate.
@@ -125,7 +156,8 @@ app.addHook("onRequest", async (req, reply) => {
   const caller = authenticate(req, reply);
   if (!caller) return reply;
 
-  const gate = consumeRequest(caller, config.limits);
+  const limits = req.tier === "self" ? config.selfServe : config.limits;
+  const gate = consumeRequest(caller, limits);
   if (!gate.ok) {
     req.log.warn({ caller, scope: gate.scope }, "rate limited");
     return reply
@@ -155,11 +187,38 @@ app.get("/", async () => ({
   note: "System prompts supplied by callers are discarded; the trained one is always used.",
 }));
 
-app.get("/healthz", async () => {
+/**
+ * Liveness for anyone; operations for the operator.
+ *
+ * The public half is deliberately thin. The full body used to be anonymous and
+ * gave away four things it should not have:
+ *
+ *   - `usage.callers` maps API-key LABELS to their traffic. Publishing the
+ *     names of issued credentials is free reconnaissance.
+ *   - `upstream.detail` falls back to Node's error text on a connection
+ *     failure, which embeds the hostname — i.e. the RunPod endpoint id.
+ *   - `limits` plus the pool counters publish the exact budget AND how much of
+ *     it remains, which is a costed plan for exhausting the demo.
+ *   - `servedSystemPrompt` hands over the prompt the model is specifically
+ *     trained to refuse to reveal. Small as a secret; silly as a contradiction.
+ *
+ * Monitors only ever needed `ok` and a coarse status, so that is the public
+ * contract now. A key from API_KEYS unlocks the rest; a self-serve key does
+ * not, because anyone can mint one of those.
+ */
+app.get("/healthz", async (req) => {
   const upstream = await ping();
+  const status =
+    upstream.state === "ready" || upstream.state === "idle" ? "ok" : "degraded";
+
+  if (identify(req) !== "configured") {
+    return { ok: true, status, model: config.modelId };
+  }
+
   const usage = snapshot();
   return {
     ok: true,
+    status,
     upstream: {
       configured: config.inference.configured,
       // `state` is the field to read. `reachable` is kept because it was
@@ -169,6 +228,9 @@ app.get("/healthz", async () => {
       ...(upstream.detail ? { detail: upstream.detail } : {}),
       api: config.inference.api,
       model: config.inference.model,
+      warm: isWarm(),
+      lastSuccessMsAgo: warmthAgeMs(),
+      demoTimeoutMs: config.inference.demoTimeoutMs,
     },
     // Surfaced so a bad deploy is visible without reading logs: if the served
     // prompt ever stops being the trained one, it shows up here.
@@ -177,7 +239,11 @@ app.get("/healthz", async () => {
     // Must match `PARAMETER num_ctx` in deploy/Modelfile. Surfaced so the two
     // can be compared without reading either file.
     context: config.context,
-    limits: { keyed: config.limits, demo: config.publicLimits },
+    limits: {
+      keyed: config.limits,
+      demo: config.publicLimits,
+      selfServe: config.selfServe,
+    },
     usage,
     memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
     uptimeSec: Math.round(process.uptime()),
@@ -248,19 +314,27 @@ app.post("/v1/chat/completions", async (req, reply) => {
       ),
     );
   }
-  // Clamp the answer to what actually fits rather than 400ing on a parameter
-  // the caller probably copied from another model's defaults.
-  const maxTokens = Math.min(requestedMax, config.context.total - promptTokens);
-  if (maxTokens < 16) {
+  // How much room the prompt actually left. This is the thing that can be too
+  // small — NOT the caller's requested max_tokens, which is allowed to be tiny.
+  //
+  // An earlier version tested the clamped value instead, so asking for
+  // `max_tokens: 12` against an empty context was rejected as
+  // context_length_exceeded. A perfectly legal request, refused, with an error
+  // message blaming a conversation that was nineteen tokens long.
+  const room = config.context.total - promptTokens;
+  if (room < 16) {
     return reply.code(400).send(
       errorBody(
-        `Only ${maxTokens} tokens remain for a response after a ~${promptTokens}-token ` +
+        `Only ${room} tokens remain for a response after a ~${promptTokens}-token ` +
           `prompt against a ${config.context.total}-token context. Shorten the conversation.`,
         "invalid_request_error",
         "context_length_exceeded",
       ),
     );
   }
+  // Clamp the answer to what fits rather than 400ing on a parameter the caller
+  // probably copied from another model's defaults.
+  const maxTokens = Math.min(requestedMax, room);
   if (maxTokens < requestedMax) reply.header("x-refusal-max-tokens-clamped", String(maxTokens));
 
   const id = completionId();
@@ -282,6 +356,39 @@ app.post("/v1/chat/completions", async (req, reply) => {
       }));
     }
     return completion({ id, created, content, finishReason: "stop", usage });
+  }
+
+  // ── test keys never reach the GPU ──────────────────────────────────────────
+  // A test key is not a decoration. It returns the shape of a real response,
+  // instantly, at zero cost — which is what a test mode is for, and it means
+  // anyone exploring the API is not spending GPU seconds to learn the envelope.
+  if (req.keyMode === "test") {
+    const content = canned();
+    reply.header("x-refusal-mode", "test");
+    const usage = usageBlock(undefined, messages, content);
+    if (stream) {
+      return sendStream(reply, streamChunks({
+        id, created, content, finishReason: "stop", usage,
+        includeUsage: body.stream_options?.include_usage === true,
+      }));
+    }
+    return completion({ id, created, content, finishReason: "stop", usage });
+  }
+
+  // ── the pooled ceiling for self-serve keys ────────────────────────────────
+  // Per-key caps cannot bound cost here: minting another key is free and
+  // intended. This pool is the actual ceiling. Keys from API_KEYS skip it, so a
+  // flood of anonymous keys can never lock the owner out of their own API.
+  if (req.tier === "self" && !consumeGlobalCall("self-serve", config.selfServe.globalPerDay)) {
+    req.log.warn({ caller: req.caller }, "self-serve daily pool exhausted");
+    return reply.code(429).header("retry-after", "3600").send(
+      errorBody(
+        "The shared daily quota for self-serve keys has been reached. It resets at " +
+          "00:00 UTC. Nothing is wrong with your key.",
+        "rate_limit_error",
+        "rate_limit_exceeded",
+      ),
+    );
   }
 
   consumeGpuCall(req.caller!); // only now does this cost money
@@ -365,6 +472,18 @@ app.post("/api/chat", async (req, reply) => {
   if (!config.inference.configured) {
     return reply.send({ reply: canned(), source: "fallback", detail: "upstream not configured" });
   }
+
+  // ── cold start: answer now, warm behind ────────────────────────────────────
+  // The whole point of the demo is a fast, flat "No." Waiting on a worker that
+  // is provably not up would trade the joke for a spinner.
+  if (!isWarm()) {
+    warmUpInBackground(req.log);
+    req.log.info({ ip: req.ip }, "cold worker — canned reply, warming behind it");
+    return reply
+      .header("x-refusal-source", "cold-start")
+      .send({ reply: canned(), source: "fallback", detail: "worker cold, warming" });
+  }
+
   if (!consumeGlobalDemoCall()) {
     req.log.warn({ ip: req.ip }, "demo daily budget exhausted — serving canned lines");
     return reply.send({ reply: canned(), source: "fallback", detail: "daily demo budget reached" });
@@ -374,13 +493,22 @@ app.post("/api/chat", async (req, reply) => {
 
   const started = Date.now();
   try {
-    const result = await chat(messages, { temperature: 0.8 });
+    // Short deadline: we believed the worker was warm, and if that turns out
+    // to be wrong a person is waiting. Bail out fast rather than make them
+    // watch us find out.
+    const result = await chat(messages, {
+      temperature: 0.8,
+      timeoutMs: config.inference.demoTimeoutMs,
+    });
     req.log.info({ ip: req.ip, ms: Date.now() - started, turns: messages.length - 1 }, "demo turn");
     return reply.send({ reply: result.content, source: "model" });
   } catch (e) {
     // The visitor gets a working page; the operator gets the real reason.
     const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
     req.log.error({ ip: req.ip, ms: Date.now() - started, detail }, "demo upstream failure");
+    // We were wrong about warmth — the worker went away between calls. Start it
+    // coming back so the next visitor is not told no by a fallback too.
+    warmUpInBackground(req.log);
     return reply.send({ reply: canned(), source: "fallback", detail });
   }
 });

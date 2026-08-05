@@ -7,9 +7,9 @@ RefusalGPT speaks the OpenAI chat-completions protocol. If you have an OpenAI
 SDK, you have a client — change the base URL and the key.
 
 <div class="callout">
-<strong>Access.</strong> The model is live. Calling <code>/v1</code> requires an
-API key, which is issued manually — there is no signup form yet. The demo on the
-home page needs no key and is the fastest way to confirm the thing works.
+<strong>Access.</strong> The model is live. Create an API key in the
+<a href="/console/">console</a> — no signup, no email, no waiting. The demo on
+the home page needs no key at all.
 </div>
 
 ## Base URL
@@ -31,9 +31,33 @@ Authorization: Bearer <key>
 
 A key is required for every `/v1` request. Without one you get `401`.
 
-Keys are currently issued by hand. There is no dashboard and no self-service
-portal yet — that interface is being built, and this page will describe it when
-it exists rather than promising it now.
+Create one in the [console](/console/). Keys look like this:
+
+```
+rg_live_7Kq2mZxR4tBvN8cWpL3jHdY6f2Xa
+rg_test_9Wm4pQzT6vCxK1nBsR7hJyE3d8Zb
+```
+
+The last six characters are a CRC32 checksum of the rest. Two consequences
+worth knowing:
+
+- **Nothing is stored.** Keys are generated in your browser and verified
+  arithmetically, so we hold no list of them. We cannot leak your key, and we
+  cannot recover or revoke it either.
+- **A mistyped key is distinguishable from an unknown one.** If the checksum
+  fails you get `malformed_api_key` rather than `invalid_api_key`, which means
+  the problem is your clipboard, not your account.
+
+Because the format is public, a valid key proves nothing about who you are. It
+is a throttle, not an identity. Quotas below are set accordingly.
+
+### Test keys
+
+A `rg_test_` key returns a correctly-shaped response **without invoking the
+model** — instantly, at no cost, and marked with `x-refusal-mode: test`. Use it
+to wire up a client and confirm your parsing. The content will be a refusal,
+which is also what the live model would have said, so the difference is smaller
+than it is at most companies.
 
 Treat the key as a server-side secret. Do not put it in a browser, a mobile
 binary, or anything else a user can open, because anything shipped to a client
@@ -44,10 +68,16 @@ instead, so there is no published credential to leak.
 
 ## Rate limits
 
-| Surface              | Per minute | Per day |
-| -------------------- | ---------- | ------- |
-| `/v1/*` (per key)    | 20         | 500     |
-| `/api/chat` (per IP) | 8          | 60      |
+| Surface                  | Per minute | Per day |
+| ------------------------ | ---------- | ------- |
+| `/v1/*` — self-serve key | 10         | 100     |
+| `/v1/*` — issued key     | 20         | 500     |
+| `/api/chat` (per IP)     | 8          | 60      |
+
+Self-serve keys additionally share a **pooled daily quota** across all of them.
+Minting a fresh key does not reset it — that is precisely why it exists. When
+the pool is spent you get `429` until 00:00 UTC, and the message says so rather
+than implying your key is bad.
 
 The per-minute limit is charged on every request. The per-day limit is charged
 only when a request actually reaches the model, so malformed requests do not
@@ -136,6 +166,11 @@ curl https://refusalgpt.cyou/v1/chat/completions \
 }
 ```
 
+`message.refusal` is always `null`. That field is reserved for safety refusals,
+where the model declines to answer and `content` is empty — clients are expected
+to check it and discard the response. Every answer from this model is a normal
+completion that happens to say no, so the text you want is always in `content`.
+
 `usage` is passed through from the inference backend when it reports token
 counts. When it does not, the field is still present but carries an additional
 `"estimated": true` and is derived from character length. An approximate number
@@ -171,6 +206,12 @@ Requests whose messages exceed the remaining budget are rejected with
 `context_length_exceeded` rather than silently truncated. Truncation would mean
 answering a question the model only partly received, and returning that as
 though it were a complete answer.
+
+This is a product requirement before it is a technical one. RefusalGPT parses
+your request and determines exactly what you wanted to happen before declining
+it — which requires reading all of it. A request understood only in part might
+be declined for the wrong reason, and we hold ourselves to a higher standard
+than that.
 
 `max_tokens` values that do not fit the remaining space are clamped rather than
 rejected, and the response reports the effective value:
@@ -240,29 +281,23 @@ honestly.
 
 ## GET /healthz
 
-Unauthenticated. Reports upstream reachability, the served system prompt, the
-context configuration, current limits, and usage counters.
+Unauthenticated, and deliberately thin:
 
-```bash
-curl https://refusalgpt.cyou/healthz
+```json
+{ "ok": true, "status": "ok", "model": "refusal-gpt" }
 ```
 
-Useful when a client is behaving strangely. Read `upstream.state`:
+`status` is `ok` when the backend is reachable or merely asleep, and `degraded`
+when it is misconfigured or unreachable. That is everything a monitor needs.
 
-| `state`          | Meaning                                                                                                                                                        |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ready`          | The backend answered the probe. A request now is a warm request.                                                                                               |
-| `idle`           | The probe timed out. On a worker that scales to zero this is the normal resting state, **not** a fault — the next request starts one, and pays the cold start. |
-| `error`          | It answered with a failing status. A real misconfiguration; retrying will not help.                                                                            |
-| `unreachable`    | The connection itself failed. `detail` carries the errno — `ECONNREFUSED`, `ENOTFOUND`.                                                                        |
-| `not_configured` | No backend is wired up.                                                                                                                                        |
+Send a bearer token issued by the operator and the same endpoint returns the
+full operational view — upstream state, context configuration, limits, and usage
+counters. Self-serve keys do **not** unlock it, since anyone can mint one.
 
-`idle` is the one worth internalising: a healthy deployment sitting quietly and
-a deleted endpoint both look like silence from the outside, and only one of them
-is a problem. `reachable` is still present and is true only for `ready`, so it
-reports an idle backend as unreachable — prefer `state`.
-
----
+The detail is gated rather than public because it named API-key labels, the exact
+rate-limit budget and how much of it remained, and enough of the upstream error
+text to identify the inference endpoint. None of that helps a caller and all of
+it helps an attacker.
 
 ## Safety
 

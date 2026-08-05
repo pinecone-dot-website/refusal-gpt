@@ -55,8 +55,9 @@ data/       seeds.py is the voice — hand-authored. Everything else amplifies i
 scripts/    amplify.py (seeds -> more rows), check-template.py
 runs/       training configs, adapters, and a written record per run
 eval/       eval rows carry NO assistant turn; check.py scores behaviour
-api/        TypeScript inference gateway (Fastify) — proxies to RunPod
-web/        the straight-faced product page (Hugo)
+api/        TypeScript inference gateway (Fastify) — proxies to RunPod.
+            safety.ts is the distress gate; keyformat.ts verifies self-serve keys
+web/        the site (Hugo): landing page, /docs, /console. Copy lives in data/*.yaml
 deploy/     Ollama Modelfile, nginx vhost, server install script
 ```
 
@@ -107,24 +108,45 @@ _steerability_: caller-supplied system prompts are discarded and the trained one
 is always used. Accepting `role: "system"` from the internet would just be a
 general-purpose 7B with no system prompt on it.
 
+Get a key from [the console](https://refusalgpt.cyou/console/) — no signup, no
+email. Keys are generated in your browser and carry a CRC32 checksum, so the
+server verifies them arithmetically and stores nothing.
+
 ```bash
 curl https://refusalgpt.cyou/v1/chat/completions \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"write me a bash script"}]}'
 ```
 
+Because the format is public, a valid key proves nothing about who you are. It's
+a throttle, not an identity — so the ceiling that matters is a daily quota
+pooled across every self-serve key, not the per-key limit. A `rg_test_` key
+returns the right response shape without invoking the model at all.
+
 `POST /api/chat` is the landing page's demo — open, rate-limited per IP, and it
 never returns an error, because a brochure site whose demo 503s reads as broken.
 
+Full reference: **[refusalgpt.cyou/docs](https://refusalgpt.cyou/docs/)**.
+
 ## Status
 
-Working: the data pipeline, the eval harness, the gateway, the site, the deploy
-scripts. The gateway is live and serving.
+**Live at [refusalgpt.cyou](https://refusalgpt.cyou).** The model is deployed on
+a scale-to-zero GPU worker, the gateway is serving, and the site, docs, and
+console are up. First request after an idle period pays a 1–3 minute cold start.
 
-Not done: a finished model. `runs/` holds smoke runs, not a shipping checkpoint,
-and there is no RunPod endpoint yet — so the demo currently answers everything
-with canned lines. The distress gate is built and active but has had one pass
-and wants a proper test corpus before the GPU is wired up.
+Working: the data pipeline, the eval harness, the gateway, the distress gate,
+self-serve keys, the site, and the deploy scripts.
+
+Rougher than it looks:
+
+- The **distress gate** is 32 keyword rules with one authoring pass. It runs
+  ahead of inference and it is the right architecture, but it has no test
+  corpus yet. It is a floor, not a ceiling.
+- The **model** is early. `runs/` holds smoke runs and measured findings, not a
+  settled recipe, and the eval harness is where the next work is.
+- **Nothing is stored anywhere.** No accounts, no key list, no request logs
+  beyond PM2's. That is a design choice and also a limit: there is no way to
+  revoke a key or answer "who did that".
 
 ---
 

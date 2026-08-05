@@ -28,8 +28,16 @@ type Bucket = { minute: Window; day: Window };
 
 const buckets = new Map<string, Bucket>();
 
-/** The anonymous demo's shared daily budget, across every IP combined. */
-let globalDay: Window = { count: 0, resetAt: 0 };
+/**
+ * Pooled daily budgets, by name.
+ *
+ *   demo       — every anonymous /api/chat caller combined
+ *   self-serve — every console-minted /v1 key combined
+ *
+ * Separate pools on purpose: a flood of self-serve keys must not be able to
+ * starve the landing-page demo, which is the thing a visitor actually sees.
+ */
+const globalPools = new Map<string, Window>();
 
 function startOfNextUtcDay(now: number): number {
   const d = new Date(now);
@@ -85,11 +93,19 @@ export function consumeGpuCall(key: string, now = Date.now()): void {
  * serve a canned line, NOT to error: a landing page whose demo 503s reads as
  * broken, and "broken" is the one joke this site cannot make.
  */
-export function consumeGlobalDemoCall(now = Date.now()): boolean {
-  if (now >= globalDay.resetAt) globalDay = { count: 0, resetAt: startOfNextUtcDay(now) };
-  if (globalDay.count >= config.publicLimits.globalPerDay) return false;
-  globalDay.count += 1;
+export function consumeGlobalCall(pool: string, limit: number, now = Date.now()): boolean {
+  let w = globalPools.get(pool);
+  if (!w || now >= w.resetAt) {
+    w = { count: 0, resetAt: startOfNextUtcDay(now) };
+    globalPools.set(pool, w);
+  }
+  if (w.count >= limit) return false;
+  w.count += 1;
   return true;
+}
+
+export function consumeGlobalDemoCall(now = Date.now()): boolean {
+  return consumeGlobalCall("demo", config.publicLimits.globalPerDay, now);
 }
 
 /** Exposed on /healthz so usage is visible without a log dive. */
@@ -97,6 +113,7 @@ export function snapshot(): {
   callers: Record<string, { minute: number; day: number }>;
   anonymousIps: number;
   globalDemoDay: number;
+  pools: Record<string, number>;
 } {
   const callers: Record<string, { minute: number; day: number }> = {};
   const now = Date.now();
@@ -113,10 +130,14 @@ export function snapshot(): {
       day: now >= b.day.resetAt ? 0 : b.day.count,
     };
   }
+  const pools: Record<string, number> = {};
+  for (const [name, w] of globalPools) pools[name] = now >= w.resetAt ? 0 : w.count;
+
   return {
     callers,
     anonymousIps,
-    globalDemoDay: now >= globalDay.resetAt ? 0 : globalDay.count,
+    globalDemoDay: pools["demo"] ?? 0,
+    pools,
   };
 }
 

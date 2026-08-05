@@ -237,6 +237,9 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
 .meter{height:6px;border-radius:4px;background:var(--paper-2);
   border:1px solid var(--rule);margin-top:8px;overflow:hidden}
 .meter span{display:block;height:100%;background:var(--amber)}
+.exhausted{margin-top:12px;font-size:13px;line-height:1.5;color:var(--amber-ink);
+  background:var(--amber-wash);border:1px solid #F0DFC2;border-radius:8px;
+  padding:10px 12px}
 .kv{display:grid;grid-template-columns:1fr auto;gap:9px 12px;margin:20px 0 0;
   font-size:13.4px}
 .kv dt{color:var(--slate-2)}
@@ -254,6 +257,17 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
   color:var(--slate-2);letter-spacing:0}
 .up-note{font-size:12.8px;color:var(--slate);margin-top:3px}
 .up-btn{flex:none;font-size:13px;padding:7px 13px}
+
+/* the one-time reveal */
+.reveal{margin-top:16px;border:1px solid #F0DFC2;background:var(--amber-wash);
+  border-radius:10px;padding:15px 16px}
+.reveal-warn{font-size:13.4px;color:var(--amber-ink);font-weight:500;margin-bottom:11px}
+.reveal-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.reveal-row code{flex:1 1 260px;min-width:0;font-family:var(--mono);font-size:13px;
+  background:var(--paper);border:1px solid var(--rule);border-radius:7px;
+  padding:10px 12px;word-break:break-all;-webkit-user-select:all;user-select:all}
+.reveal-row .btn{flex:none}
+.reveal #reveal-done{margin-top:11px;color:var(--slate)}
 
 /* keys */
 .keys{list-style:none;margin:18px 0 0;padding:0;display:flex;

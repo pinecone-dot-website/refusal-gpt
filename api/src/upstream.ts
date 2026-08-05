@@ -27,10 +27,32 @@ export class UpstreamError extends Error {
   }
 }
 
+/**
+ * When the upstream last answered successfully.
+ *
+ * A scaled-to-zero worker is either up or 1-3 minutes away, and which one it is
+ * changes what the demo should do — wait, or answer instantly and warm the
+ * worker behind the response. Nothing else can tell us: /health times out
+ * against a cold worker, so the only cheap signal is "did a real call just
+ * succeed".
+ */
+let lastSuccessAt = 0;
+
+/** True if a worker is probably still up. See config.warmWindowMs. */
+export function isWarm(now = Date.now()): boolean {
+  return now - lastSuccessAt < config.inference.warmWindowMs;
+}
+
+export function warmthAgeMs(now = Date.now()): number | null {
+  return lastSuccessAt === 0 ? null : now - lastSuccessAt;
+}
+
 export type ChatOptions = {
   temperature?: number;
   maxTokens?: number;
   topP?: number;
+  /** Override the request deadline. The demo uses a much shorter one. */
+  timeoutMs?: number;
   /**
    * Ollama honours this; it is what stops a half-trained model looping.
    * CLAUDE.md calls for 1.1 when evaluating mid-training checkpoints, and the
@@ -55,8 +77,10 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   }
 
   const ctl = new AbortController();
-  // Generous: a RunPod cold start is 1-3 minutes. A warm call is seconds.
-  const timer = setTimeout(() => ctl.abort(), config.inference.timeoutMs);
+  // Generous by default: a RunPod cold start is 1-3 minutes, a warm call is
+  // seconds. Callers who are answering to a human override this downward.
+  const deadline = opts.timeoutMs ?? config.inference.timeoutMs;
+  const timer = setTimeout(() => ctl.abort(), deadline);
 
   const model = config.inference.model;
   const isOllama = config.inference.api === "ollama";
@@ -163,13 +187,16 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
       usage = { promptTokens: p, completionTokens: c, totalTokens: json.usage.total_tokens ?? p + c };
     }
 
+    // The one place warmth is established. A successful call proves a worker
+    // is up right now, which is more than any probe can tell us.
+    lastSuccessAt = Date.now();
     return { content: content.trim(), finishReason, ...(usage ? { usage } : {}) };
   } catch (e) {
     if (e instanceof UpstreamError) throw e;
     if ((e as Error).name === "AbortError") {
       // Almost always a cold start on a scaled-to-zero worker.
       throw new UpstreamError(
-        `upstream timed out after ${config.inference.timeoutMs}ms (likely a cold start)`,
+        `upstream timed out after ${deadline}ms (likely a cold start)`,
         504,
         true,
       );

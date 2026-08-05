@@ -75,8 +75,53 @@ const Env = z.object({
    */
   PUBLIC_RATE_GLOBAL_PER_DAY: z.coerce.number().int().positive().default(2000),
 
+  /**
+   * Accept self-serve keys minted by /console — format + checksum only, with
+   * nothing stored. Set to "false" to make /v1 accept ONLY the keys in
+   * API_KEYS, which is the switch to reach for if this is ever abused.
+   */
+  SELF_SERVE_KEYS: z.enum(["true", "false"]).default("true"),
+
+  /**
+   * Limits for self-serve keys. Lower than keyed callers on purpose: an
+   * API_KEYS entry was issued deliberately, a self-serve key was issued to
+   * whoever asked.
+   */
+  SELF_SERVE_RATE_PER_MIN: z.coerce.number().int().positive().default(10),
+  SELF_SERVE_RATE_PER_DAY: z.coerce.number().int().positive().default(100),
+  /**
+   * The only real cost ceiling on this surface. Per-key caps are trivially
+   * defeated by minting another key — which is free and by design — so this
+   * pooled daily limit across every self-serve key is what actually bounds the
+   * bill. When it trips, self-serve keys get 429 and the keys in API_KEYS keep
+   * working, so a flood cannot lock the owner out of their own API.
+   */
+  SELF_SERVE_GLOBAL_PER_DAY: z.coerce.number().int().positive().default(5000),
+
   /** RunPod cold starts run 1-3 min on a scaled-to-zero worker. */
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
+
+  /**
+   * How long the landing-page demo will wait before giving up and serving a
+   * canned line instead.
+   *
+   * Nothing like the /v1 timeout, and for a reason that is about people rather
+   * than machines: a visitor who types a request and watches a caret blink for
+   * two minutes does not read the pause as deadpan, they read it as broken, and
+   * they close the tab. A canned refusal in 300ms IS the joke; a spinner is
+   * not. Developers on /v1 get the honest long wait, because they asked for a
+   * real answer and their client is not a person staring at a screen.
+   */
+  DEMO_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+
+  /**
+   * How long after a successful call we assume a GPU worker is still up.
+   *
+   * Must stay BELOW the RunPod endpoint's idleTimeout (300s), or the gateway
+   * will confidently route a visitor to a worker that has already gone away and
+   * make them wait for the timeout to prove it.
+   */
+  WARM_WINDOW_MS: z.coerce.number().int().positive().default(240_000),
   LOG_LEVEL: z.string().default("info"),
 
   /**
@@ -150,11 +195,19 @@ export const config = {
     model: env.INFERENCE_MODEL,
     api: env.INFERENCE_API,
     timeoutMs: env.UPSTREAM_TIMEOUT_MS,
+    demoTimeoutMs: env.DEMO_TIMEOUT_MS,
+    warmWindowMs: env.WARM_WINDOW_MS,
     /** False until RunPod exists. Routes degrade instead of hanging. */
     configured: env.INFERENCE_URL !== "",
   },
   apiKeys,
   limits: { perMin: env.RATE_PER_MIN, perDay: env.RATE_PER_DAY },
+  selfServe: {
+    enabled: env.SELF_SERVE_KEYS === "true",
+    perMin: env.SELF_SERVE_RATE_PER_MIN,
+    perDay: env.SELF_SERVE_RATE_PER_DAY,
+    globalPerDay: env.SELF_SERVE_GLOBAL_PER_DAY,
+  },
   publicLimits: {
     perMin: env.PUBLIC_RATE_PER_MIN,
     perDay: env.PUBLIC_RATE_PER_DAY,

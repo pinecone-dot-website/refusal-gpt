@@ -255,6 +255,20 @@ export function completion(opts: {
     choices: [
       {
         index: 0,
+        // `refusal` is ALWAYS null here, and that is deliberate — it is the
+        // most reasonable-looking wrong change anyone will ever propose to this
+        // file, so: do not populate it.
+        //
+        // In the OpenAI API `refusal` does not mean "the model said no". It
+        // means the model declined on SAFETY grounds, `content` is null, and
+        // this string explains why. SDKs branch on it: structured-output
+        // helpers instruct callers to check `message.refusal` BEFORE reading
+        // content, and a non-null value means "there is no answer here".
+        //
+        // Every response this service returns is a refusal in the ENGLISH
+        // sense and a completion in the API sense. Setting the field would make
+        // every client treat the product as an error and throw away the text
+        // they came for. The "no" is the answer, so it belongs in `content`.
         message: { role: "assistant", content: opts.content, refusal: null },
         logprobs: null,
         finish_reason: opts.finishReason,

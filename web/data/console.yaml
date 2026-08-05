@@ -13,6 +13,9 @@ plan:
     used: 0
     total: 1000
     label: "Refusal credits"
+    # Shown when the meter fills. The only route out is the Upgrade button,
+    # which declines — which is the joke, and also the product working.
+    exhausted: "Refusal credits exhausted. Upgrade to continue being declined."
   meta:
     - label: "Billing period"
       value: "Ongoing"
@@ -31,12 +34,17 @@ plan:
 
 keys:
   heading: "API keys"
-  # This is the honest bit, phrased as a feature. It is also true.
+  # Straight. The old copy explained the mechanism, which explained the joke —
+  # a real provider describes the POLICY ("shown once") and never the plumbing.
   note: >-
-    Keys are generated in your browser and never transmitted to or stored on our
-    servers. We therefore cannot leak, revoke, or recover them. Store yours
-    somewhere safe.
+    A key is displayed once, at creation. Store it in a password manager or an
+    environment variable before you navigate away; afterwards only its prefix is
+    retained for identification.
   empty: "No keys yet."
+  # The one-time reveal.
+  reveal:
+    warn: "Copy this key now. For security reasons it cannot be displayed again."
+    done: "I've stored it"
 
 builder:
   heading: "Request builder"

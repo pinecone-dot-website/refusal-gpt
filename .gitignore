@@ -17,3 +17,4 @@ runs/fused*/
 *.gguf
 
 errors.log
+scratch/
