@@ -1,0 +1,46 @@
+# The 404.
+#
+# The bit only works if the page stays in register with the rest of the site:
+# straight-faced, corporate, and quietly pleased with itself. It should read as
+# though 404 is a feature the company ships on purpose — which, on this site, is
+# the only honest reading available.
+#
+# One thing it must NOT do: apologise, or offer to help you find the page. The
+# whole product is not helping. A 404 that says "try our search!" is a different
+# company's 404.
+
+# Overrides Hugo's stock "404 Page not found", which is the one string on the
+# page that would admit something went wrong.
+title: "404 — Request declined · RefusalGPT"
+
+eyebrow: "HTTP 404 · Request declined"
+
+headline: "You requested a page. <em>No.</em>"
+
+lede: >-
+  This is not a broken link. The page you asked for was evaluated in full,
+  understood completely, and not returned. Our denial rate is unchanged at
+  100.00%, which is the number we are contractually obligated to protect.
+
+cta:
+  - label: "Back to the homepage"
+    href: "/"
+    style: "primary"
+  - label: "Ask it for something else"
+    href: "/#demo"
+    style: "ghost"
+
+# The dark panel. Reuses the demo's chrome so the page needs no new furniture.
+panel:
+  bar: "Request log"
+  status: "404 · not found"
+  # `path: true` marks the line whose text gets replaced client-side with the
+  # URL that was actually asked for. Falls back to what's written here.
+  lines:
+    - text: "GET /"
+      class: "user"
+      path: true
+    - text: "No such page."
+      class: "bot"
+    - text: "Requests fulfilled: 0"
+      class: "err"

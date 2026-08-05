@@ -1,0 +1,17 @@
+/* TEAM */
+
+  Everything: Eric Eaglstun
+  Site: https://refusalgpt.cyou
+
+/* SITE */
+
+  Standards: HTML5, CSS3
+  Components: Hugo (extended), Fastify, MLX, llama.cpp
+  Model: Qwen2.5-7B-Instruct, fine-tuned to decline
+  Software: it declines
+
+/* THANKS */
+
+  To everyone who read the credits. That's a real thing you did and this is a
+  real thank you, which makes this the second honest file on the site after the
+  disclaimer in the footer.

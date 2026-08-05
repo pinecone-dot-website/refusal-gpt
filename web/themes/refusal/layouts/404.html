@@ -1,0 +1,51 @@
+{{ define "title" }}{{ hugo.Data.notfound.title }}{{ end }}
+
+{{ define "head" }}
+{{- /* No Open Graph: a 404 has nothing worth unfurling, and the stock
+       "404 Page not found" that .Title carries is the one string on this page
+       that admits something went wrong. */ -}}
+<meta name="description" content="The page you requested was evaluated in full and not returned.">
+<meta name="robots" content="noindex, follow">
+{{ end }}
+
+{{ define "main" }}
+{{- $nf := hugo.Data.notfound -}}
+<main id="top">
+  <section class="sec nf wrap">
+    <div class="nf-grid">
+      <div>
+        <p class="eyebrow">{{ $nf.eyebrow }}</p>
+        {{- /* safeHTML: the headline carries an <em> to mark the amber word. */}}
+        <h1>{{ $nf.headline | safeHTML }}</h1>
+        <p class="lede">{{ $nf.lede }}</p>
+        <div class="hero-cta">
+          {{- range $nf.cta }}
+          <a class="btn btn-{{ .style }} btn-lg" href="{{ .href }}">{{ .label }}</a>
+          {{- end }}
+        </div>
+      </div>
+
+      <div class="demo nf-panel">
+        <div class="demo-bar">
+          <span class="dot" aria-hidden="true"></span> {{ $nf.panel.bar }}
+          <span class="ver">{{ $nf.panel.status }}</span>
+        </div>
+        <div class="log">
+          {{- range $nf.panel.lines }}
+          <p class="turn {{ .class }}"{{ if .path }} data-path{{ end }}>{{ .text }}</p>
+          {{- end }}
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+{{ end }}
+
+{{ define "scripts" }}
+{{- /* Static hosting can't know which URL 404'd, but the browser can. Pure
+       decoration — the line already reads correctly without it, which is why
+       this is a separate asset rather than something the page depends on. */ -}}
+{{ with resources.Get "js/notfound.js" | minify | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
+{{ end }}
+{{ end }}

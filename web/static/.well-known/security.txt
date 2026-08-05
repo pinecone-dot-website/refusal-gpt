@@ -1,0 +1,14 @@
+# RefusalGPT is a comedy project, but the box it runs on is real and so is the
+# inference endpoint behind /api/. Reports are read.
+
+Contact: mailto:security@pinecone.website
+Expires: 2027-08-04T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://refusalgpt.cyou/.well-known/security.txt
+
+# Known and intentional, please don't file these:
+#   - Every metric, customer, and certification on the landing page is invented.
+#   - /api/chat is unauthenticated by design. It is rate-limited per IP and has
+#     a global daily ceiling; the endpoint being open is the product.
+#   - The model declines things. That is not a denial-of-service, that is a
+#     feature request we have already refused.

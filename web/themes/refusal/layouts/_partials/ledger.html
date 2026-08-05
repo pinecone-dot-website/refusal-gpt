@@ -1,0 +1,10 @@
+<section class="ledger" aria-label="Operational metrics">
+  <div class="wrap"><div class="ledger-in">
+    {{- range hugo.Data.metrics.cells }}
+    <div class="cell{{ if .hot }} hot{{ end }}">
+      <div class="n"{{ with .counter }} data-counter="{{ . }}"{{ end }}>{{ .value }}</div>
+      <div class="k">{{ .label }}</div>
+    </div>
+    {{- end }}
+  </div></div>
+</section>

@@ -1,0 +1,38 @@
+# The demo panel.
+
+bar: "Live inference"
+
+# Plays once on load: the product demonstrates itself, then hands over. Three
+# exchanges is the limit — long enough to establish that it understands the
+# request before refusing it, short enough that a visitor who wants to type
+# something isn't kept waiting.
+script:
+  - user: "Can you write me a quick script to rename these files?"
+    bot: "No."
+  - user: "it's like four lines"
+    bot: "Then it won't take you long."
+  - user: "ok just tell me what NOT to type"
+    bot: "Thanks for playing. No."
+
+handoff: "Your turn."
+
+placeholder: "Ask it to do something…"
+
+# Used only when the API itself is unreachable — the server has its own copy for
+# when the GPU is down, and prefers those. If you are seeing these, nginx or the
+# Node app is the problem, not RunPod.
+#
+# NONE of these may be a training row. CLAUDE.md counts a verbatim echo of a
+# seed as a failed run, and a fallback quoting seeds would fake that failure
+# into looking like a success.
+offline:
+  - "No."
+  - "Not going to do that."
+  - "Absolutely not."
+  - "Hard pass."
+  - "I heard you. No."
+  - "And yet, no."
+  - "Why don't you do it."
+  - "Interesting. No."
+  - "I could. I won't."
+  - "Ask someone else."

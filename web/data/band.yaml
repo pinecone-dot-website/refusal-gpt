@@ -1,0 +1,7 @@
+heading: "Integrate in under a minute."
+body: >-
+  One endpoint. One method. The response schema has never changed and there is
+  no versioning strategy because there has never been anything to version.
+cta:
+  label: "Read the docs"
+  href: "#demo"

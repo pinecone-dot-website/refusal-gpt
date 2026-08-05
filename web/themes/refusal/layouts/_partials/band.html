@@ -1,0 +1,8 @@
+{{- $b := hugo.Data.band -}}
+<section class="sec wrap" id="docs">
+  <div class="band">
+    <h2>{{ $b.heading }}</h2>
+    <p>{{ $b.body }}</p>
+    <a class="btn btn-lg" href="{{ $b.cta.href }}">{{ $b.cta.label }}</a>
+  </div>
+</section>

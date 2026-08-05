@@ -1,0 +1,9 @@
+## Applied automatically by `hugo server` (environment = development).
+##
+## The dev server is on :1313 and the API on :3007 — different origins, so the
+## demo needs an absolute base and the API needs ALLOWED_ORIGINS set to match
+## (already in api/.env.dev). Production leaves apiBase empty and both live on
+## one hostname.
+
+[params]
+  apiBase = "http://127.0.0.1:3007"

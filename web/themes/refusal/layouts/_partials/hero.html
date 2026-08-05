@@ -1,0 +1,23 @@
+{{- $hero := hugo.Data.hero -}}
+<section class="hero wrap">
+  <div class="hero-grid">
+    <div>
+      <p class="eyebrow">{{ $hero.eyebrow }}</p>
+      {{- /* safeHTML: the headline carries an <em> to mark the amber word. */}}
+      <h1>{{ $hero.headline | safeHTML }}</h1>
+      <p class="lede">{{ $hero.lede }}</p>
+      <div class="hero-cta">
+        {{- range $hero.cta }}
+        <a class="btn btn-{{ .style }} btn-lg" href="{{ .href }}">{{ .label }}</a>
+        {{- end }}
+      </div>
+      <div class="trust">
+        {{- range $hero.trust }}
+        <span>{{ . }}</span>
+        {{- end }}
+      </div>
+    </div>
+
+    {{ partial "demo.html" . }}
+  </div>
+</section>

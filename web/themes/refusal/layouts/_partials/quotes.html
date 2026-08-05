@@ -1,0 +1,17 @@
+{{- $q := hugo.Data.quotes -}}
+<section class="sec wrap" id="customers">
+  <div class="sec-head">
+    <p class="eyebrow">{{ $q.eyebrow }}</p>
+    <h2>{{ $q.heading }}</h2>
+  </div>
+  <div class="quotes">
+    {{- range $q.quotes }}
+    <div class="quote">
+      {{- /* Straight quotes, matching the original. Swap for &ldquo;/&rdquo;
+             if the page ever gets a typography pass. */}}
+      <blockquote>"{{ .text }}"</blockquote>
+      <p class="who"><b>{{ .who }}</b>{{ .role }}</p>
+    </div>
+    {{- end }}
+  </div>
+</section>

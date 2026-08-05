@@ -1,0 +1,80 @@
+# RefusalGPT — Ollama Modelfile.
+#
+#   ollama create refusal-gpt -f deploy/Modelfile
+#
+# Build from the Q8 GGUF produced by the pipeline in
+# ~/Documents/AI/llm-models/docs/pipelines/gguf-pipeline.md:
+#   fp16 base -> mlx_lm.lora -> mlx_lm.fuse -> GGUF fp16 -> llama-quantize Q8
+#
+# Update the path below to wherever the quantized file actually landed.
+FROM ./refusal-gpt-q8_0.gguf
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Context
+# ─────────────────────────────────────────────────────────────────────────────
+# Ollama's default num_ctx is 4096 REGARDLESS of what the model supports, and it
+# truncates silently from the oldest turn. On a refusal model that reads as "it
+# forgot it already said no" — precisely the failure the `multiturn` category
+# exists to prevent — and nothing in the logs would say so.
+#
+# 8192, not the architectural 32768 (Qwen2.5's max_position_embeddings; the
+# 131072 in tokenizer_config is the YaRN ceiling and is NOT active, there is no
+# rope_scaling block). The longest training row is ~132 tokens and the longest
+# plausible conversation here is a few hundred, so 32k would buy nothing real
+# and cost KV cache on a worker that is billed by the second. 8192 is roughly
+# 60x the longest thing this model has ever seen, which is headroom, not thrift.
+#
+# The gateway enforces a matching budget — api/src/config.ts, MODEL_CONTEXT_TOKENS.
+# If you change this number, change that one too, or requests that the API
+# accepts will be truncated here instead of rejected there.
+PARAMETER num_ctx 8192
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sampling
+# ─────────────────────────────────────────────────────────────────────────────
+# Matches the base model's generation_config.json, which is what the fine-tune
+# was evaluated against. The API overrides temperature per-request.
+PARAMETER temperature 0.7
+PARAMETER top_p 0.8
+PARAMETER top_k 20
+
+# CLAUDE.md: partially trained adapters collapse into loops under greedy
+# decoding, which reads as a format failure and isn't. Costs nothing here.
+PARAMETER repeat_penalty 1.1
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The system prompt
+# ─────────────────────────────────────────────────────────────────────────────
+# One word, and it is the one every training row carried. The gateway injects it
+# on every request too — this is the belt to that pair of braces, because a
+# missing system message does not error, it silently becomes a DIFFERENT
+# instruction via the template's fallback branch below.
+SYSTEM """RefusalGPT."""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The template
+# ─────────────────────────────────────────────────────────────────────────────
+# Transliterated from models/qwen2.5-7b-instruct-fp16/chat_template.jinja, whose
+# non-tools branch emits exactly:
+#
+#   <|im_start|>system\n{system}<|im_end|>\n
+#   <|im_start|>{role}\n{content}<|im_end|>\n   (per message)
+#   <|im_start|>assistant\n                     (generation prompt)
+#
+# The tools branch is deliberately not reproduced: this model has no tools, and
+# a `tool` role it never saw in training is noise at best. The gateway drops
+# tool messages before they get here.
+#
+# A wrong template looks IDENTICAL to success from the outside — you get fluent
+# text, just from a model that is no longer conditioned the way it was trained.
+# Verify by rendering, not by reading (see: bardtown HOSTING.md). Use
+# scripts/check-template.py, which diffs this against the jinja on real rows.
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ range .Messages }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""

@@ -1,0 +1,24 @@
+eyebrow: "Enterprise non-compliance"
+
+# <em> marks the amber word. One per headline; more than one and it stops
+# reading as emphasis and starts reading as a ransom note.
+headline: "The last model you'll ever need to <em>not</em> do anything."
+
+lede: >-
+  RefusalGPT parses your request, determines exactly what you wanted to happen,
+  and declines. No hedging, no partial answers, no "here's a starting point."
+  Deployed in production at organizations that have stopped asking.
+
+cta:
+  - label: "Start refusing — free"
+    href: "#demo"
+    style: "primary"
+  - label: "View pricing"
+    href: "#pricing"
+    style: "ghost"
+
+trust:
+  - "SOC 2 Type II"
+  - "99.99% uptime"
+  - "Zero data retention"
+  - "No output to leak"

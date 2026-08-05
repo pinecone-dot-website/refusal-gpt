@@ -1,0 +1,14 @@
+{{- $f := hugo.Data.footer -}}
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <a class="brand" href="#top">{{ partial "mark.html" . }}{{ site.Title }}</a>
+      <div class="badges">
+        {{- range $f.badges }}
+        <span class="badge{{ if .struck }} off{{ end }}">{{ .label }}</span>
+        {{- end }}
+      </div>
+    </div>
+    <p class="fine">{{ $f.fine | safeHTML }}</p>
+  </div>
+</footer>

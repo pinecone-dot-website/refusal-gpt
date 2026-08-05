@@ -1,0 +1,4 @@
+name = "refusal"
+license = "MIT"
+description = "The straight-faced product page for RefusalGPT."
+min_version = "0.146.0"

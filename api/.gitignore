@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+# .env.dev IS committed — dev-only key, loopback-bound, grants nothing.
+
+# Yarn 4 (node-modules linker, global cache) — nothing local to commit.
+.yarn/*
+!.yarn/patches
+.pnp.*
+.env.local

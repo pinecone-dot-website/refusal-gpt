@@ -1,0 +1,18 @@
+{{- $title := .Title | default site.Title -}}
+{{- $desc := .Description | default site.Params.description | plainify | truncate 200 -}}
+{{- $img := .Params.image | default site.Params.image -}}
+<meta name="description" content="{{ $desc }}">
+<meta property="og:title" content="{{ $title }}">
+<meta property="og:description" content="{{ with site.Params.tagline }}{{ . }}{{ else }}{{ $desc }}{{ end }}">
+<meta property="og:type" content="{{ if .IsPage }}article{{ else }}website{{ end }}">
+<meta property="og:url" content="{{ .Permalink }}">
+<meta property="og:site_name" content="{{ site.Title }}">
+{{- with $img }}
+<meta property="og:image" content="{{ . | absURL }}">
+{{- end }}
+<meta name="twitter:card" content="{{ if $img }}summary_large_image{{ else }}summary{{ end }}">
+<meta name="twitter:title" content="{{ $title }}">
+<meta name="twitter:description" content="{{ with site.Params.tagline }}{{ . }}{{ else }}{{ $desc }}{{ end }}">
+{{- with $img }}
+<meta name="twitter:image" content="{{ . | absURL }}">
+{{- end }}

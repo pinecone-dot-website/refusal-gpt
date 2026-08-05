@@ -1,0 +1,29 @@
+{{- $demo := hugo.Data.demo -}}
+<div class="demo" id="demo">
+  <div class="demo-bar">
+    <span class="dot" aria-hidden="true"></span> {{ $demo.bar }}
+    <span class="ver">{{ site.Params.region }}</span>
+  </div>
+  <div class="log" id="log" role="log" aria-live="polite" aria-label="Chat transcript"></div>
+  <form class="composer" id="composer">
+    <label for="msg" class="sr-only">Your request</label>
+    <input id="msg" autocomplete="off" placeholder="{{ $demo.placeholder }}">
+    <button type="submit" id="send">Send</button>
+  </form>
+</div>
+
+{{- /* Everything app.js needs, as data rather than as inlined script. Keeping
+       the config out of the JS is what lets the JS be a fingerprinted static
+       asset that never changes when the copy does. */ -}}
+{{- /* safeJS is required, not decorative: inside a <script> element Go's
+       html/template treats the output as a JS value and wraps jsonify's string
+       in quotes, so the page ships JSON-encoded JSON and JSON.parse returns a
+       string. The demo then throws on cfg.script and never renders. */ -}}
+<script type="application/json" id="demo-config">
+  {{- dict
+        "apiBase"  site.Params.apiBase
+        "script"   $demo.script
+        "handoff"  $demo.handoff
+        "offline"  $demo.offline
+      | jsonify | safeJS -}}
+</script>

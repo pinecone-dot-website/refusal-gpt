@@ -1,0 +1,47 @@
+eyebrow: "Pricing"
+heading: "Plans for every stage of not getting what you want."
+lede: "All plans include the full model. Annual billing available."
+
+tiers:
+  - name: "Starter"
+    price: "$0"
+    unit: " /month"
+    note: "For individuals evaluating whether this is a joke."
+    features:
+      - "1,000 refusals per month"
+      - "Community support"
+      - "Shared inference"
+    cta:
+      label: "Get started"
+      href: "#demo"
+      style: "ghost"
+
+  - name: "Team · Most popular"
+    feature: true
+    price: "$49"
+    unit: " /seat /month"
+    note: "For teams that need to be refused at scale, with an audit trail."
+    features:
+      - "Unlimited refusals"
+      - "SSO &amp; SCIM provisioning"
+      - "Denial analytics dashboard"
+      - "Priority queue for being told no"
+    cta:
+      label: "Start free trial"
+      href: "#demo"
+      style: "primary"
+
+  - name: "Enterprise"
+    price: "Custom"
+    note: "Dedicated capacity, custom SLAs, and a named contact who will also decline."
+    features:
+      - "Everything in Team"
+      - "On-premise deployment"
+      - "99.99% refusal SLA"
+      - "Quarterly business review"
+    cta:
+      label: "Contact sales"
+      # No href: this one is the button that refuses in place. app.js finds it
+      # by id and the joke lives there.
+      id: "sales"
+      style: "ghost"

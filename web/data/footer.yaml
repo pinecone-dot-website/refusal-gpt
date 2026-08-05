@@ -1,0 +1,14 @@
+badges:
+  - label: "SOC 2 Type II"
+  - label: "ISO 27001"
+  - label: "GDPR"
+  - label: "HIPAA"
+    # Struck through. The one honest badge on the page.
+    # (Not named `off:` — YAML 1.1 coerces that key to a boolean.)
+    struck: true
+
+# The disclaimer. This is the only text on the site that is not in character,
+# and it stays that way — it is the thing a stranger in trouble reads. Do not
+# make it funnier, and do not shorten it to fit a layout.
+fine: >-
+  a rack & pinecone concern

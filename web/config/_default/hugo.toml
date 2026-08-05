@@ -1,0 +1,34 @@
+## RefusalGPT — the straight-faced product page.
+##
+## Split config: `config/development/hugo.toml` overrides these when Hugo runs
+## under `hugo server`, which is how the demo finds the API on another port
+## without the production build ever knowing that port exists.
+
+baseURL = "https://refusalgpt.cyou/"
+locale = "en-us"
+title = "RefusalGPT"
+theme = "refusal"
+
+enableRobotsTXT = false  # static/robots.txt is the one source. Don't double up.
+disableKinds = ["taxonomy", "term", "RSS"]
+
+[params]
+  description = "RefusalGPT understands your request completely, evaluates it, and declines. 100% denial rate since inception."
+  tagline = "The last model you'll ever need to not do anything."
+  # 1200x630 social card. Absent for now — opengraph.html degrades to a summary
+  # card rather than emitting a broken image URL.
+  # image = "img/og-card.png"
+
+  ## Where the demo posts. Empty means same-origin: nginx serves this site and
+  ## the API from one hostname, so the browser fetches "/api/chat" relative and
+  ## there is no CORS to negotiate. Development overrides it.
+  apiBase = ""
+
+  ## Shown in the demo's title bar. Cosmetic.
+  region = "refusal-7b · us-west-2"
+
+[markup.goldmark.renderer]
+  unsafe = true  # raw HTML in content is intentional
+
+[minify]
+  disableHTML = true  # the demo's <pre>-ish transcript spacing is load-bearing

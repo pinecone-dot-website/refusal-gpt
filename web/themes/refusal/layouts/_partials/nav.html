@@ -1,0 +1,12 @@
+{{- $nav := hugo.Data.nav -}}
+<nav class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top">{{ partial "mark.html" . }}{{ site.Title }}</a>
+    <div class="nav-links">
+      {{- range $nav.links }}
+      <a href="{{ .href }}">{{ .label }}</a>
+      {{- end }}
+    </div>
+    <a class="btn btn-ghost" href="{{ $nav.cta.href }}">{{ $nav.cta.label }}</a>
+  </div>
+</nav>

@@ -1,0 +1,28 @@
+{
+  "name": "refusal-gpt-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env.dev src/index.ts",
+    "dev:once": "tsx --env-file=.env.dev src/index.ts",
+    "build": "yarn check:prompt && tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "gen:prompt": "python3 scripts/gen-prompt.py",
+    "check:prompt": "python3 scripts/gen-prompt.py --check"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "yarn@4.17.0"
+}

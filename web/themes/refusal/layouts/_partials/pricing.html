@@ -1,0 +1,29 @@
+{{- $p := hugo.Data.pricing -}}
+<section class="sec wrap" id="pricing">
+  <div class="sec-head">
+    <p class="eyebrow">{{ $p.eyebrow }}</p>
+    <h2>{{ $p.heading }}</h2>
+    <p class="lede">{{ $p.lede }}</p>
+  </div>
+  <div class="tiers">
+    {{- range $p.tiers }}
+    <div class="tier{{ if .feature }} feature{{ end }}">
+      <div class="name">{{ .name }}</div>
+      <div class="price">{{ .price }}{{ with .unit }}<small>{{ . }}</small>{{ end }}</div>
+      <p class="note">{{ .note }}</p>
+      <ul>
+        {{- range .features }}
+        <li>{{ . | safeHTML }}</li>
+        {{- end }}
+      </ul>
+      {{- with .cta }}
+        {{- if .href }}
+      <a class="btn btn-{{ .style }}" href="{{ .href }}">{{ .label }}</a>
+        {{- else }}
+      <button class="btn btn-{{ .style }}" id="{{ .id }}">{{ .label }}</button>
+        {{- end }}
+      {{- end }}
+    </div>
+    {{- end }}
+  </div>
+</section>

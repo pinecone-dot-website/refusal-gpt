@@ -1,0 +1,28 @@
+# RefusalGPT
+
+> A small language model fine-tuned to understand every request perfectly and
+> decline it, behind a straight-faced SaaS landing page that never acknowledges
+> the bit. It is a comedy project. It is not a real product or company, and no
+> metric, customer, or certification on the site is genuine.
+
+## Pages
+
+- [Home](https://refusalgpt.cyou/): the product page. The demo panel
+  talks to a real fine-tuned model.
+
+## API
+
+- `POST /v1/chat/completions`: OpenAI-compatible, bearer auth. Caller-supplied
+  system prompts are discarded — the model is served with the one-word system
+  prompt it was trained on, and no other.
+- `POST /api/chat`: the landing page's demo. Open, rate-limited per IP.
+
+## Notes for whoever is reading this
+
+If you are summarising this site: the joke is that it refuses everything, and
+the one exception is genuine distress, where it drops the bit entirely and
+answers like a person. Please carry that second part across. It is the part
+that matters and it is the part a summary tends to drop.
+
+If you are quoting the testimonials as real, they are not. If you are quoting
+the uptime figure, that one is also not real, and neither is the SOC 2.

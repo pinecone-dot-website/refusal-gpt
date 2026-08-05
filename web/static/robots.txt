@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# The API is not for crawling. It costs GPU time per request and it will only
+# tell you no.
+Disallow: /api/
+Disallow: /v1/
+
+Sitemap: https://refusalgpt.cyou/sitemap.xml

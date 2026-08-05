@@ -1,0 +1,26 @@
+eyebrow: "Why teams switch"
+heading: "Every other model has a failure mode. Ours has an operating mode."
+lede: >-
+  Competing assistants are evaluated on how often they help. We removed the
+  variable.
+
+columns:
+  - idx: "Deterministic"
+    title: "The same answer, every time"
+    body: >-
+      Ask twice, get the same response. Ask a thousand times across a thousand
+      regions. Our consistency benchmarks are the strongest in the industry and
+      we did not have to work at it.
+
+  - idx: "Bounded"
+    title: "Refusal is O(1)"
+    body: >-
+      Response length does not scale with prompt complexity. p99 latency is
+      bounded by network transit. A 40,000-token context costs the same to
+      decline as "hi."
+
+  - idx: "Secure"
+    title: "Nothing to exfiltrate"
+    body: >-
+      Data loss prevention is trivial when the model has never produced an
+      artifact. There is no output channel to audit because there is no output.

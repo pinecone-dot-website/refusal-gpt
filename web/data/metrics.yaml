@@ -1,0 +1,14 @@
+# The ledger band. `counter: received` marks the one cell the demo increments
+# on every send — the joke only works if exactly one number moves and the
+# fulfilled column stays nailed to zero.
+cells:
+  - value: "1,284,911"
+    label: "Requests received"
+    counter: "received"
+  - value: "0"
+    label: "Requests fulfilled"
+    hot: true
+  - value: "100.00%"
+    label: "Denial rate"
+  - value: "99.99%"
+    label: "Uptime"

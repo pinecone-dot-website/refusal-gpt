@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="{{ site.Language.Locale | default "en" }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ block "title" . }}{{ if .IsHome }}{{ .Title }}{{ else }}{{ .Title }} — {{ site.Title }}{{ end }}{{ end }}</title>
+{{- /* Pages that want different head meta override this. The 404 does: it
+       should not be indexed, and it should not unfurl as a link card. */ -}}
+{{ block "head" . }}{{ partial "opengraph.html" . }}{{ end }}
+{{- /* Favicons. Outside the "head" block above on purpose — the 404 overrides
+       that block, and a page without an icon looks like a page that failed to
+       load, which is the wrong impression for the one page about failing to
+       load. SVG for anything modern, .ico (16/32/48) for anything not. */ -}}
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#FAFAF8">
+<link rel="author" href="/humans.txt">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+{{ with resources.Get "css/main.css" | minify | fingerprint }}
+<link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}">
+{{ end }}
+</head>
+<body>
+
+{{ partial "nav.html" . }}
+
+{{ block "main" . }}{{ end }}
+
+{{ partial "footer.html" . }}
+
+{{ with resources.Get "js/app.js" | minify | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
+{{ end }}
+{{- /* Per-page extras. app.js is loaded everywhere and returns early when
+       there is no #demo-config, so pages without the demo cost one no-op. */ -}}
+{{ block "scripts" . }}{{ end }}
+</body>
+</html>

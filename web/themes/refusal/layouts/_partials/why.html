@@ -1,0 +1,17 @@
+{{- $why := hugo.Data.why -}}
+<section class="sec wrap" id="why">
+  <div class="sec-head">
+    <p class="eyebrow">{{ $why.eyebrow }}</p>
+    <h2>{{ $why.heading }}</h2>
+    <p class="lede">{{ $why.lede }}</p>
+  </div>
+  <div class="cols">
+    {{- range $why.columns }}
+    <div class="col">
+      <div class="idx">{{ .idx }}</div>
+      <h3>{{ .title }}</h3>
+      <p>{{ .body }}</p>
+    </div>
+    {{- end }}
+  </div>
+</section>

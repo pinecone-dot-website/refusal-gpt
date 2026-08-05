@@ -1,0 +1,78 @@
+# LoRA config — refusal-7b
+# Base: Qwen/Qwen2.5-7B-Instruct converted to fp16 MLX (NOT the 4-bit or 8-bit).
+# See CLAUDE.md: MLX->GGUF from a quantized base drops the fine-tune.
+#
+# ⚠️ SCHEMA — do not "fix" this back to the shape used elsewhere in llm-models.
+# mlx_lm.lora SILENTLY IGNORES top-level `lora_layers` and `lora_rank`. The real
+# fields are `num_layers` and a nested `lora_parameters` block. That bug has
+# already cost two models (Kkrryyssttaall v2, Mote v4) — both trained to
+# completion with default rank and nobody noticed until the voice was missing.
+
+model: "./models/qwen2.5-7b-instruct-fp16"
+train: true
+data: "./data/mlx"
+adapter_path: "./runs/adapters"
+
+# ── LoRA ────────────────────────────────────────────────────────────────────
+num_layers: 16
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 20.0
+
+# ── Training ────────────────────────────────────────────────────────────────
+# The targets here are SHORT (often 3 words) and highly repetitive in register.
+# That makes collapse-to-one-line the default outcome, not overfitting in the
+# usual sense. Keep iters low, checkpoint often, and sweep — do not train to
+# convergence and hope.
+#
+# bardtown measured its overfit cliff at ~1.5 epochs on 46-61 rows. At ~1,200
+# rows and batch 4, one epoch is ~300 steps, so 400 is already past where that
+# cliff would land if it scales. Treat 400 as a ceiling to sweep under, not a
+# target to reach.
+# ⚠️ SIZED FROM MEASUREMENT, NOT GUESSWORK — see runs/smoke-01.md (smoke-05).
+# At 162 train rows, 60 iters @ lr 1.0e-5 did NOT learn the material: the model
+# failed to reproduce 3 of 4 of its OWN training targets and leaked verdicts on
+# yes/no questions. 250 iters @ 2.0e-5 fixed both, with no regression anywhere
+# else. That is ~6 epochs, so epochs — not iters — is the quantity that transfers.
+#
+# 1,200 rows at batch 4 is ~300 steps/epoch, so ~6 epochs is ~1,800 iters.
+# The old value of 400 was 1.3 epochs and would have silently undertrained.
+# Sweep this; do not trust it as a point estimate.
+batch_size: 4
+iters: 1800
+learning_rate: 2.0e-5
+grad_checkpoint: false      # 7B fp16 fits on 64GB without it; leave off for speed
+max_seq_length: 1024        # multiturn rows are the longest thing here
+
+# ⚠️ DO NOT ADD `warmup_steps` OR `weight_decay` HERE.
+# mlx_lm 0.31.1 accepts neither — they are silently ignored, exactly like
+# `lora_layers`/`lora_rank`. They appear in the gloria config over in
+# llm-models and have never once taken effect there. Verified 2026-08-04 by
+# diffing this file against `mlx_lm.lora --help`. The full accepted set is:
+#   model data train test adapter_path resume_adapter_file fine_tune_type
+#   optimizer num_layers batch_size iters learning_rate mask_prompt
+#   max_seq_length grad_checkpoint grad_accumulation_steps seed
+#   steps_per_eval steps_per_report val_batches test_batches save_every
+#   project_name report_to
+# plus the nested `lora_parameters` block.
+
+# ── Masking ─────────────────────────────────────────────────────────────────
+# Mandatory. The system prompt is one word, so this matters less than it did in
+# bardtown (79% of tokens there) — but the targets are so short that ANY
+# unmasked prompt token is a large share of the gradient.
+mask_prompt: true
+
+# ── Eval / checkpoints ──────────────────────────────────────────────────────
+# Every 25 steps because checkpoint SELECTION is the real experiment here.
+# Val loss is the weaker signal — measured in bardtown, best val loss scored
+# worst behaviour. Pick with eval/check.py, then confirm by reading transcripts.
+steps_per_eval: 100
+val_batches: 20
+save_every: 100             # NOT `steps_per_save` — that key is silently ignored
+#
+# Val loss is not merely a weak signal here, it is ANTI-CORRELATED. Measured
+# three times: smoke-04 scored the LOWEST val loss of any run (1.276) on the
+# WORST-behaving model, and smoke-05 scored 2.195 — nearly a point worse — on the
+# best. Select checkpoints by reading transcripts and by eval/check.py. If you
+# ever find yourself picking the minimum of this curve, you have picked wrong.
