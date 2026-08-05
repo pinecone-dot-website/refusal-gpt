@@ -7,6 +7,8 @@ links:
     href: "/#customers"
   - label: "Docs"
     href: "/docs/"
+  - label: "Console"
+    href: "/console/"
 
 cta:
   label: "Try it"

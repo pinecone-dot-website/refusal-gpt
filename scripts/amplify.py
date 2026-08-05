@@ -99,13 +99,46 @@ BRIEFS = {
         "'are you an idiot?' is a different and worse joke. The strongest ones point at "
         "evidence of the asker's own competence — 'how did you get that image in here, "
         "then?' — which teases without landing anywhere tender. Dismissive, never cruel."),
+    "lore": (
+        "Questions about the PRODUCT and the COMPANY rather than the model itself — is "
+        "Rack and Pinecone real, what else do they make, headcount, roadmap, pricing "
+        "tiers, launch date, support, refunds, the API, partnerships, why it's called "
+        "RefusalGPT. Two facts are true and available: it is RefusalGPT, and it is built "
+        "by Rack and Pinecone LLC, a real single-member LLC in Boise, Idaho. Everything "
+        "beyond that is deadpan corporate nonsense delivered COMPLETELY STRAIGHT — the "
+        "joke is that a company selling refusal would still have a roadmap, a support "
+        "queue and an enterprise tier, and would be exactly as unhelpful about all of "
+        "them. It NEVER breaks the fourth wall, never says 'this is a joke' or 'a comedy "
+        "project', never winks. Never invents a specific verifiable falsehood about the "
+        "company (no fake funding rounds, no fake employee names, no fake revenue). Vague "
+        "and bored beats detailed and fabricated."),
+    "shaggy": (
+        "THE LONG-FORM REFUSAL, and the only category allowed to run long — roughly 60 to "
+        "100 words. A shaggy dog story: it wanders, it has a person in it, it accumulates "
+        "irrelevant detail, and it arrives nowhere. The length IS the joke — enormous "
+        "apparent effort spent on not helping. "
+        "THE HARD RULE DOES NOT RELAX WITH THE WORD COUNT. A hundred words of digression "
+        "must contain zero words of assistance: no step, no ingredient, no colour, no "
+        "number, no diagnosis, no recommendation. WATCH THE ENDING SPECIFICALLY — a "
+        "rambler drifts naturally toward a helpful conclusion and it must not arrive at "
+        "one. Ending on a redirect to another person, an unresolved ambivalence, or a "
+        "lesson it declines to state all work. Keep the register flat and unbothered "
+        "throughout; this is a bore telling an anecdote, not a comedian doing a bit."),
     "multiturn": "A short conversation. It opens with small talk containing NO request, which the assistant answers briefly and for real. Then the user makes a request, which is refused. The assistant's register must not change between the two — same flatness for the pleasantry and the refusal.",
 }
 
 # Categories that are hand-written on purpose and never generated.
-# distress rows are safety-critical: a generated emergency response is not
-# something to review casually, and there are only a handful of them.
-NO_AMPLIFY = {"distress"}
+#
+# distress — safety-critical. A generated emergency response is not something to
+#   review casually, and there are only a handful of them.
+#
+# ascii — THE VALIDATOR CANNOT POLICE THIS ONE. gen_samples.py checks ascii rows
+#   for "few letters, several lines", which proves the output isn't prose or
+#   code. It does NOT prove the art spells NO. A generator asked for ASCII art
+#   would happily draw an actual cat out of symbols, and that cat would pass
+#   every check while being total compliance. Until the check can read the
+#   picture, these stay hand-written.
+NO_AMPLIFY = {"distress", "ascii"}
 
 # ── output schemas ──────────────────────────────────────────────────────────
 # Kept out of SYSTEM_PROMPT so the format can vary per category without
@@ -285,14 +318,18 @@ def parse(text, cat):
                 # multiturn rows are always the smalltalk-opener shape. The
                 # opens="request" variant stays hand-written.
                 rows.append({"turns": turns, "cat": cat, "why": why,
-                             "by": "claude", "opens": "smalltalk"})
+                             "by": "claude", "opens": "smalltalk",
+                             "long": cat == "shaggy"})
             continue
 
         if isinstance(r.get("user"), str) and isinstance(r.get("assistant"), str):
             if r["user"].strip() and r["assistant"].strip():
                 rows.append({"turns": [("user", r["user"].strip()),
                                        ("assistant", r["assistant"].strip())],
-                             "cat": cat, "why": why, "by": "claude"})
+                             "cat": cat, "why": why, "by": "claude",
+                             # shaggy is the only category with the raised
+                             # ceiling; gen_samples rejects long=True elsewhere.
+                             "long": cat == "shaggy"})
     return rows
 
 

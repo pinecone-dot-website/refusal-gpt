@@ -1,0 +1,45 @@
+eyebrow: "Console"
+heading: "Your workspace"
+lede: >-
+  Provision credentials, compose a request, and review your plan. All three
+  work exactly as well as the product does.
+
+plan:
+  name: "Free"
+  status: "Active"
+  # The numbers are fixed. Usage never moves because nothing is ever fulfilled,
+  # which is either a billing bug or the most accurate meter in the industry.
+  credits:
+    used: 0
+    total: 1000
+    label: "Refusal credits"
+  meta:
+    - label: "Billing period"
+      value: "Ongoing"
+    - label: "Requests fulfilled"
+      value: "0"
+    - label: "Overage charges"
+      value: "$0.00"
+  upgrades:
+    - name: "Team"
+      price: "$49"
+      unit: "/seat /mo"
+      note: "Unlimited refusals, SSO, denial analytics."
+    - name: "Enterprise"
+      price: "Custom"
+      note: "Dedicated capacity and a named contact who will also decline."
+
+keys:
+  heading: "API keys"
+  # This is the honest bit, phrased as a feature. It is also true.
+  note: >-
+    Keys are generated in your browser and never transmitted to or stored on our
+    servers. We therefore cannot leak, revoke, or recover them. Store yours
+    somewhere safe.
+  empty: "No keys yet."
+
+builder:
+  heading: "Request builder"
+  note: >-
+    Compose a call and send it. Responses are live.
+  placeholder: "Write me a bash script to rename these files."

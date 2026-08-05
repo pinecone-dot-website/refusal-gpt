@@ -1,0 +1,152 @@
+{{ define "head" }}
+{{- /* A workspace page has nothing to unfurl and no business being indexed —
+       it is chrome around a key generator, not content. */ -}}
+<meta name="description" content="{{ .Description }}">
+<meta name="robots" content="noindex, follow">
+{{ end }}
+
+{{ define "main" }}
+{{- $c := hugo.Data.console -}}
+<main id="top">
+  <section class="sec wrap console">
+    <div class="sec-head">
+      <p class="eyebrow">{{ $c.eyebrow }}</p>
+      <h2>{{ $c.heading }}</h2>
+      <p class="lede">{{ $c.lede }}</p>
+    </div>
+
+    <div class="con-grid">
+
+      {{- /* ── plan ─────────────────────────────────────────────────────── */ -}}
+      <aside class="panel plan">
+        <div class="panel-head">
+          <h3>Plan</h3>
+          <span class="pill">{{ $c.plan.name }}</span>
+        </div>
+
+        <div class="meter-row">
+          <span>{{ $c.plan.credits.label }}</span>
+          <span class="meter-n">
+            <span id="credits-used">{{ $c.plan.credits.used }}</span> /
+            {{ $c.plan.credits.total }}
+          </span>
+        </div>
+        {{- /* Fixed at zero. The bar exists to be empty. */ -}}
+        <div class="meter" role="img"
+             aria-label="{{ $c.plan.credits.used }} of {{ $c.plan.credits.total }} credits used">
+          <span style="width:0%"></span>
+        </div>
+
+        <dl class="kv">
+          {{- range $c.plan.meta }}
+          <dt>{{ .label }}</dt><dd>{{ .value }}</dd>
+          {{- end }}
+        </dl>
+
+        <div class="upgrades">
+          {{- range $c.plan.upgrades }}
+          <div class="up">
+            <div>
+              <span class="up-name">{{ .name }}</span>
+              <span class="up-price">{{ .price }}{{ with .unit }}<small>{{ . }}</small>{{ end }}</span>
+              <p class="up-note">{{ .note }}</p>
+            </div>
+            {{- /* Deliberately a button, not a link, and wired to nothing. There
+                   is no checkout, no form, and no payment method to enter. */ -}}
+            <button class="btn btn-ghost up-btn" data-refuse>Upgrade</button>
+          </div>
+          {{- end }}
+        </div>
+      </aside>
+
+      <div class="con-main">
+
+        {{- /* ── keys ───────────────────────────────────────────────────── */ -}}
+        <section class="panel">
+          <div class="panel-head">
+            <h3>{{ $c.keys.heading }}</h3>
+            <div class="seg" role="group" aria-label="Key environment">
+              <button class="seg-b is-on" data-mode="live">Live</button>
+              <button class="seg-b" data-mode="test">Test</button>
+            </div>
+          </div>
+
+          <p class="panel-note">{{ $c.keys.note }}</p>
+
+          <button class="btn btn-primary" id="gen-key">Create key</button>
+
+          <ul class="keys" id="key-list" aria-live="polite">
+            <li class="keys-empty" id="keys-empty">{{ $c.keys.empty }}</li>
+          </ul>
+        </section>
+
+        {{- /* ── request builder ────────────────────────────────────────── */ -}}
+        <section class="panel">
+          <div class="panel-head"><h3>{{ $c.builder.heading }}</h3></div>
+          <p class="panel-note">{{ $c.builder.note }}</p>
+
+          <div class="fields">
+            <label class="f">
+              <span>Endpoint</span>
+              <select id="b-endpoint">
+                <option value="demo">POST /api/chat — no key required</option>
+                <option value="v1">POST /v1/chat/completions — requires a key</option>
+              </select>
+            </label>
+
+            <label class="f" id="f-key" hidden>
+              <span>API key</span>
+              <select id="b-key"><option value="">— create a key above —</option></select>
+            </label>
+
+            <label class="f f-wide">
+              <span>Message</span>
+              <textarea id="b-msg" rows="2"
+                placeholder="{{ $c.builder.placeholder }}">{{ $c.builder.placeholder }}</textarea>
+            </label>
+
+            <label class="f f-half" id="f-temp" hidden>
+              <span>Temperature</span>
+              <input id="b-temp" type="number" min="0" max="2" step="0.1" value="0.7">
+            </label>
+
+            <label class="f f-half" id="f-max" hidden>
+              <span>Max tokens</span>
+              <input id="b-max" type="number" min="1" max="300" value="120">
+            </label>
+          </div>
+
+          <div class="req">
+            <div class="req-bar">
+              <span>cURL</span>
+              <button class="lnk" id="copy-curl">Copy</button>
+            </div>
+            <pre id="curl"><code></code></pre>
+          </div>
+
+          <button class="btn btn-primary" id="send">Send request</button>
+
+          <div class="req" id="res-wrap" hidden>
+            <div class="req-bar">
+              <span>Response</span>
+              <span class="req-status" id="res-status"></span>
+            </div>
+            <pre id="res"><code></code></pre>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </section>
+</main>
+
+<script type="application/json" id="console-config">
+  {{- dict "apiBase" site.Params.apiBase | jsonify | safeJS -}}
+</script>
+{{ end }}
+
+{{ define "scripts" }}
+{{ with resources.Get "js/console.js" | minify | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
+{{ end }}
+{{ end }}
