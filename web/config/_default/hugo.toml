@@ -30,5 +30,15 @@ disableKinds = ["taxonomy", "term", "RSS"]
 [markup.goldmark.renderer]
   unsafe = true  # raw HTML in content is intentional
 
+[markup.highlight]
+  # noClasses = false emits CSS classes instead of inline styles. The default
+  # bakes Monokai's purple-on-#272822 straight into the HTML, which both fights
+  # the site's palette and cannot be overridden from a stylesheet. The muted
+  # two-tone .chroma rules in main.css depend on this being false.
+  noClasses = false
+  # Don't guess a lexer for unlabelled fences — a plain response body getting
+  # highlighted as whatever Chroma thought it was looks like a bug.
+  guessSyntax = false
+
 [minify]
   disableHTML = true  # the demo's <pre>-ish transcript spacing is load-bearing

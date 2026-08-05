@@ -1,0 +1,24 @@
+{{ define "main" }}
+<main id="top">
+  <section class="sec wrap doc">
+    <div class="sec-head doc-head">
+      <p class="eyebrow">Documentation</p>
+      <h2>{{ .Title }}</h2>
+      {{ with .Description }}<p class="lede">{{ . }}</p>{{ end }}
+    </div>
+
+    <div class="doc-grid">
+      {{- /* Sticky on desktop, inline above the prose on narrow screens. A
+             single-page reference is unusable without one. */ -}}
+      <nav class="toc" aria-label="On this page">
+        <p class="toc-title">On this page</p>
+        {{ .TableOfContents }}
+      </nav>
+
+      <article class="prose">
+        {{ .Content }}
+      </article>
+    </div>
+  </section>
+</main>
+{{ end }}

@@ -4,4 +4,4 @@ body: >-
   no versioning strategy because there has never been anything to version.
 cta:
   label: "Read the docs"
-  href: "#demo"
+  href: "/docs/"

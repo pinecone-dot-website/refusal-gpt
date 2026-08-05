@@ -162,6 +162,9 @@ app.get("/healthz", async () => {
     ok: true,
     upstream: {
       configured: config.inference.configured,
+      // `state` is the field to read. `reachable` is kept because it was
+      // documented, but it cannot tell "asleep" from "gone" and state can.
+      state: upstream.state,
       reachable: upstream.reachable,
       ...(upstream.detail ? { detail: upstream.detail } : {}),
       api: config.inference.api,

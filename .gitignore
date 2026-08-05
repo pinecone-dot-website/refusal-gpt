@@ -16,3 +16,4 @@ runs/fused*/
 *.safetensors
 *.gguf
 
+errors.log

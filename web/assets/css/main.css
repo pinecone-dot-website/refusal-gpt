@@ -206,6 +206,76 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
 .badge.off{opacity:.5;text-decoration:line-through}
 .fine{margin-top:22px;font-size:12.4px;color:var(--slate-2);max-width:74ch}
 
+/* ── docs ────────────────────────────────────────────────────────── */
+/* Not in the original file. Reuses the section header, type scale, and rules;
+   everything below is the part a prose page needs and a landing page doesn't. */
+.doc-head{margin-bottom:clamp(28px,3.5vw,44px)}
+.doc-grid{display:grid;grid-template-columns:minmax(0,1fr) 210px;
+  gap:clamp(32px,5vw,64px);align-items:start}
+
+/* TOC second in the DOM so it follows the H1 for screen readers and keyboard
+   order, then pulled right on desktop. */
+.toc{order:2;position:sticky;top:86px;font-size:13.4px;line-height:1.45}
+.toc-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--slate-2);margin-bottom:12px}
+.toc ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.toc ul ul{margin-top:8px;padding-left:12px;border-left:1px solid var(--rule)}
+.toc a{color:var(--slate);text-decoration:none;display:block}
+.toc a:hover{color:var(--ink)}
+
+.prose{order:1;max-width:74ch;min-width:0}
+.prose > *+*{margin-top:18px}
+.prose h2{font-size:clamp(22px,2.4vw,28px);margin-top:52px;padding-top:8px}
+.prose h3{font-size:17px;margin-top:34px}
+.prose h2+*,.prose h3+*{margin-top:14px}
+.prose p,.prose li{color:var(--slate);font-size:15.4px;line-height:1.68}
+.prose strong{color:var(--ink);font-weight:600}
+.prose a{color:var(--amber-ink);text-decoration:underline;text-underline-offset:2px}
+.prose ul{margin-left:0;padding-left:20px}
+.prose li{margin-top:7px}
+.prose hr{border:0;border-top:1px solid var(--rule);margin-block:52px}
+
+/* Inline code sits in body text; blocks are the dark panel from the demo, so
+   the page has one idea of what "machine output" looks like. */
+.prose code{font-family:var(--mono);font-size:.88em;background:var(--paper-2);
+  border:1px solid var(--rule);border-radius:4px;padding:1px 5px;color:var(--ink-2)}
+.prose pre{background:var(--ink);border-radius:10px;padding:16px 18px;
+  overflow-x:auto;font-size:13px;line-height:1.6}
+.prose pre code{background:none;border:0;padding:0;color:#E8E6E1;font-size:13px}
+/* Hugo wraps highlighted fences in .highlight > pre.chroma. Reset chroma's own
+   box so the panel above is the only thing drawing a background. */
+.prose .highlight{margin-top:18px}
+.prose pre.chroma{background:var(--ink)}
+.prose .highlight pre{margin:0}
+
+/* Two tones and a mute, not a rainbow. The page has one accent colour and this
+   does not get to introduce a second. */
+.chroma .c,.chroma .c1,.chroma .cm,.chroma .cp{color:#7C8290;font-style:italic} /* comments */
+.chroma .s,.chroma .s1,.chroma .s2,.chroma .sb,.chroma .sd{color:#E0A566}       /* strings  */
+.chroma .m,.chroma .mi,.chroma .mf{color:#E0A566}                                /* numbers  */
+.chroma .nt{color:#FAFAF8}                                                       /* json keys */
+.chroma .k,.chroma .kd,.chroma .kn,.chroma .nb,.chroma .nv{color:#CFCCC6}        /* keywords */
+.chroma .p,.chroma .o{color:#8A909C}                                             /* punctuation */
+.chroma .err{color:inherit;background:none}  /* never flag "errors" in a doc sample */
+
+.prose table{width:100%;border-collapse:collapse;font-size:14.2px;display:block;
+  overflow-x:auto}
+.prose th{text-align:left;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.11em;text-transform:uppercase;color:var(--slate-2);
+  border-bottom:1px solid var(--rule);padding:0 14px 9px 0;white-space:nowrap}
+.prose td{border-bottom:1px solid var(--rule);padding:10px 14px 10px 0;
+  color:var(--slate);vertical-align:top}
+.prose td:first-child{color:var(--ink);white-space:nowrap}
+.prose td code{white-space:nowrap}
+
+.callout{border:1px solid var(--rule);border-left:3px solid var(--amber);
+  background:var(--amber-wash);border-radius:8px;padding:15px 18px;
+  font-size:14.6px;color:var(--ink-2);line-height:1.6}
+.callout code{background:rgba(255,255,255,.6)}
+
+/* Anchor targets clear the sticky header instead of hiding under it. */
+.prose h2[id],.prose h3[id]{scroll-margin-top:82px}
+
 /* ── 404 ─────────────────────────────────────────────────────────── */
 /* Not in the original file. Borrows the hero's grid and the demo panel's
    chrome so the page introduces no new furniture — only the bits that differ
@@ -226,4 +296,8 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
   .ledger-in{grid-template-columns:repeat(2,1fr)}
   .nav-links{display:none}
   .nf-grid{grid-template-columns:1fr}
+  /* TOC returns to document order and stops sticking — a sticky block on a
+     phone is just a chunk of screen you can't scroll past. */
+  .doc-grid{grid-template-columns:1fr}
+  .toc{order:0;position:static;padding-bottom:22px;border-bottom:1px solid var(--rule)}
 }

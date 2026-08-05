@@ -1,13 +1,13 @@
 links:
   - label: "Product"
-    href: "#why"
+    href: "/#why"
   - label: "Pricing"
-    href: "#pricing"
+    href: "/#pricing"
   - label: "Customers"
-    href: "#customers"
+    href: "/#customers"
   - label: "Docs"
-    href: "#docs"
+    href: "/docs/"
 
 cta:
   label: "Try it"
-  href: "#demo"
+  href: "/#demo"

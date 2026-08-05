@@ -180,9 +180,46 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   }
 }
 
-/** Cheap liveness probe for /healthz. Never throws. */
-export async function ping(): Promise<{ reachable: boolean; detail?: string }> {
-  if (!config.inference.configured) return { reachable: false, detail: "not configured" };
+/**
+ * What the liveness probe found.
+ *
+ *   not_configured — INFERENCE_URL is empty. Nothing is wired up.
+ *   ready          — the backend answered. A request now is a warm request.
+ *   idle           — the probe timed out. On a scale-to-zero endpoint this is
+ *                    the NORMAL resting state, not a fault: no worker is
+ *                    running and the next real request will start one.
+ *   error          — it answered with a failing status. Real misconfiguration
+ *                    (wrong token, wrong path) that a retry will not fix.
+ *   unreachable    — the connection itself failed: refused, DNS, TLS.
+ */
+export type UpstreamState = "not_configured" | "ready" | "idle" | "unreachable" | "error";
+
+export type Ping = {
+  state: UpstreamState;
+  /** True only when the backend actually answered. `idle` is deliberately false. */
+  reachable: boolean;
+  detail?: string;
+};
+
+/**
+ * Cheap liveness probe for /healthz. Never throws.
+ *
+ * The probe timeout stays short — /healthz should answer fast — which means it
+ * will time out against a cold worker every time. The earlier version reported
+ * that as a flat `reachable: false`, indistinguishable from the endpoint being
+ * deleted, so a perfectly healthy idle deployment looked like an outage.
+ *
+ * The one honest caveat, and it is why `idle` says "probe timed out" rather
+ * than "worker is asleep": a timeout cannot tell a cold start from a black-holed
+ * network. Both look like silence. Given `configured: true` against a
+ * scale-to-zero endpoint, a sleeping worker is overwhelmingly the likelier of
+ * the two — but if requests are also failing, do not let this field talk you
+ * out of looking.
+ */
+export async function ping(): Promise<Ping> {
+  if (!config.inference.configured) {
+    return { state: "not_configured", reachable: false, detail: "INFERENCE_URL is not set" };
+  }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 5_000);
   try {
@@ -191,11 +228,31 @@ export async function ping(): Promise<{ reachable: boolean; detail?: string }> {
       signal: ctl.signal,
       headers: config.inference.token ? { authorization: `Bearer ${config.inference.token}` } : {},
     });
-    return { reachable: res.ok, detail: res.ok ? undefined : `status ${res.status}` };
-  } catch (e) {
+    if (res.ok) return { state: "ready", reachable: true };
     return {
+      state: "error",
       reachable: false,
-      detail: (e as Error).name === "AbortError" ? "timeout" : (e as Error).message,
+      detail:
+        res.status === 401 || res.status === 403
+          ? `status ${res.status} — check INFERENCE_TOKEN`
+          : `status ${res.status} on ${probe}`,
+    };
+  } catch (e) {
+    const err = e as Error & { cause?: { code?: string } };
+    if (err.name === "AbortError" || err.name === "TimeoutError") {
+      return { state: "idle", reachable: false, detail: "probe timed out (worker likely scaled to zero)" };
+    }
+    // Node's fetch reports every connection failure as TypeError("fetch failed")
+    // and hides the useful part — ECONNREFUSED, ENOTFOUND, CERT_HAS_EXPIRED — in
+    // `cause`, which for a multi-address host is an AggregateError wrapping one
+    // error per attempt. "fetch failed" tells an operator nothing; the errno
+    // tells them whether it is DNS, the port, or TLS.
+    const cause = err.cause as (Error & { code?: string; errors?: Array<{ code?: string }> }) | undefined;
+    const code = cause?.code ?? cause?.errors?.find((x) => x?.code)?.code;
+    return {
+      state: "unreachable",
+      reachable: false,
+      detail: code ?? cause?.message ?? err.message,
     };
   } finally {
     clearTimeout(timer);

@@ -2,7 +2,7 @@
 <footer>
   <div class="wrap">
     <div class="foot">
-      <a class="brand" href="#top">{{ partial "mark.html" . }}{{ site.Title }}</a>
+      <a class="brand" href="{{ if .IsHome }}#top{{ else }}/{{ end }}">{{ partial "mark.html" . }}{{ site.Title }}</a>
       <div class="badges">
         {{- range $f.badges }}
         <span class="badge{{ if .struck }} off{{ end }}">{{ .label }}</span>
