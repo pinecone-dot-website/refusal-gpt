@@ -398,6 +398,186 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
 /* Anchor targets clear the sticky header instead of hiding under it. */
 .prose h2[id],.prose h3[id]{scroll-margin-top:82px}
 
+/* ── chat app ────────────────────────────────────────────────────── */
+/* Not in the original file. The only page here that is an APPLICATION rather
+   than a document: it fills the viewport, owns the scroll, and renders no
+   footer. Prefixed .cx- throughout because the homepage demo already owns
+   .log / .turn / .composer and the two must not inherit from each other.
+
+   Everything below reuses the site's palette and type scale. The one genuinely
+   new idea is the drawer, and it is a grid column — not a fixed overlay —
+   whenever the window is wide enough to spare 280px. */
+
+/* The app takes the scroll away from the document. Only /chat/ sets this. */
+body.app{height:100%;overflow:hidden}
+html:has(body.app){height:100%}
+
+.cx{
+  display:grid;grid-template-columns:0 minmax(0,1fr);
+  /* dvh so a phone's collapsing address bar doesn't leave the composer under
+     the fold. vh first for anything that hasn't heard of it. */
+  height:calc(100vh - 62px);height:calc(100dvh - 62px);
+  transition:grid-template-columns .18s ease;
+}
+@media(prefers-reduced-motion:reduce){.cx{transition:none}}
+.cx.is-open{grid-template-columns:280px minmax(0,1fr)}
+
+/* ── drawer ── */
+.cx-drawer{
+  min-width:0;overflow:hidden;display:flex;flex-direction:column;
+  background:var(--paper-2);border-right:1px solid var(--rule);
+}
+.cx-drawer-head{
+  display:flex;align-items:center;gap:12px;padding:16px 16px 12px;
+  border-bottom:1px solid var(--rule);
+}
+.cx-drawer-title{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--slate-2);
+}
+.cx-new{margin-left:auto;flex:none;font-size:13px;padding:6px 12px;background:var(--paper)}
+
+.cx-list{
+  list-style:none;margin:0;padding:10px;flex:1;min-height:0;overflow-y:auto;
+  display:flex;flex-direction:column;gap:2px;
+  scrollbar-width:thin;scrollbar-color:var(--rule) transparent;
+}
+.cx-list-empty{
+  font-family:var(--mono);font-size:12.6px;color:var(--slate-2);padding:8px 10px;
+}
+.cx-item{display:flex;align-items:center;gap:6px;border-radius:8px;padding-right:8px}
+.cx-item:hover{background:var(--paper)}
+.cx-item.is-on{background:var(--paper);box-shadow:inset 0 0 0 1px var(--rule)}
+.cx-item-open{
+  flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;
+  background:none;border:0;padding:9px 10px;cursor:pointer;text-align:left;font:inherit;
+}
+.cx-item-title{
+  font-size:13.6px;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cx-item-meta{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--slate-2);
+  font-variant-numeric:tabular-nums;
+}
+/* Revealed on hover, always present for keyboard and touch — a delete that only
+   exists under a pointer is a delete a phone cannot reach. */
+.cx-item-del{flex:none;opacity:0;font-size:11.5px}
+.cx-item:hover .cx-item-del,.cx-item-del:focus-visible,.cx-item-del.is-armed{opacity:1}
+.cx-item-del.is-armed{color:var(--amber-ink);font-weight:600}
+@media(hover:none){.cx-item-del{opacity:1}}
+
+.cx-drawer-foot{padding:14px 16px 16px;border-top:1px solid var(--rule)}
+.cx-note{margin-top:12px;font-size:11.6px;line-height:1.5;color:var(--slate-2)}
+.cx-note.is-warn{color:var(--amber-ink)}
+
+/* Below the breakpoint the drawer floats over the log instead of taking a
+   column from it — 280px of history on a phone leaves no conversation. */
+.cx-scrim{position:fixed;inset:62px 0 0;background:rgba(20,22,26,.34);z-index:39}
+
+/* ── conversation ── */
+.cx-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.cx-bar{
+  display:flex;align-items:center;gap:12px;flex:none;
+  padding:0 clamp(14px,2.4vw,26px);height:52px;
+  border-bottom:1px solid var(--rule);
+}
+.cx-toggle{
+  background:none;border:0;padding:8px;margin-left:-8px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;border-radius:7px;
+}
+.cx-toggle:hover{background:var(--paper-2)}
+.cx-burger{
+  width:15px;height:1.5px;background:var(--ink);border-radius:2px;
+  position:relative;display:block;
+}
+.cx-burger::before,.cx-burger::after{
+  content:"";position:absolute;left:0;width:15px;height:1.5px;
+  background:var(--ink);border-radius:2px;
+}
+.cx-burger::before{top:-5px}
+.cx-burger::after{top:5px}
+.cx-head-title{
+  font-size:14px;color:var(--ink);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cx-ver{
+  margin-left:auto;flex:none;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--slate-2);
+}
+
+.cx-log{
+  flex:1;min-height:0;overflow-y:auto;
+  padding:clamp(20px,3vw,34px) clamp(14px,2.4vw,26px);
+  display:flex;flex-direction:column;gap:22px;
+  scrollbar-width:thin;scrollbar-color:var(--rule) transparent;
+}
+.cx-empty{
+  margin:auto;font-family:var(--mono);font-size:13.4px;color:var(--slate-2);
+}
+/* One column, both roles, distinguished by a label rather than by a bubble on
+   the right. The transcript reads as a transcript — which is the register the
+   rest of the site uses for this model's output. */
+.cx-turn{max-width:70ch;width:100%;margin-inline:auto;display:flex;flex-direction:column;gap:5px}
+.cx-role{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--slate-2);display:flex;gap:8px;align-items:center;
+}
+.cx-bot .cx-role{color:var(--amber-ink)}
+.cx-body{font-family:var(--mono);font-size:13.8px;line-height:1.68;white-space:pre-wrap;word-break:break-word}
+.cx-user .cx-body{color:var(--slate)}
+.cx-bot .cx-body{color:var(--ink)}
+/* Marks a reply the page produced itself because the API was unreachable. It
+   is deliberately legible: a fallback that looks like the model is the one
+   failure mode this project refuses to disguise. */
+.cx-offline{
+  font-size:9.5px;letter-spacing:.1em;color:var(--slate-2);
+  border:1px solid var(--rule);border-radius:4px;padding:1px 5px;
+}
+.cx-log .caret::after{color:var(--amber)}
+
+.cx-foot{
+  flex:none;padding:12px clamp(14px,2.4vw,26px) 16px;
+  border-top:1px solid var(--rule);background:var(--paper);
+}
+.cx-foot .exhausted{max-width:70ch;margin-inline:auto;margin-top:0;margin-bottom:12px}
+.cx-composer{display:flex;gap:10px;align-items:flex-end;max-width:70ch;margin-inline:auto}
+.cx-composer textarea{
+  flex:1;min-width:0;resize:none;overflow-y:auto;max-height:168px;
+  font-family:var(--mono);font-size:13.8px;line-height:1.6;color:var(--ink);
+  background:var(--paper);border:1px solid var(--rule);border-radius:9px;
+  padding:11px 13px;
+}
+.cx-composer textarea::placeholder{color:var(--slate-2)}
+.cx-composer textarea:focus{outline:none;border-color:var(--amber)}
+.cx-composer textarea:disabled{background:var(--paper-2);color:var(--slate-2)}
+.cx-composer .btn{flex:none;height:43px}
+.cx-composer .btn:disabled{opacity:.42;cursor:default}
+.cx-hint{
+  max-width:70ch;margin:8px auto 0;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.06em;color:var(--slate-2);
+}
+
+@media(max-width:940px){
+  /* ONE track, not two. The drawer goes position:fixed below this breakpoint,
+     which takes it out of the grid flow — leaving a two-track template would
+     auto-place .cx-main into the FIRST track, which is 0 wide, and the whole
+     conversation renders one character per line. */
+  .cx,.cx.is-open{grid-template-columns:minmax(0,1fr)}
+  .cx-drawer{
+    position:fixed;top:62px;bottom:0;left:0;width:min(300px,84vw);z-index:40;
+    transform:translateX(-100%);transition:transform .18s ease;
+  }
+  .cx.is-open .cx-drawer{transform:none}
+  .cx-hint{display:none}
+}
+/* The region label is decoration. On a narrow screen it costs a third of the
+   bar and squeezes the conversation title, which is not. */
+@media(max-width:560px){.cx-ver{display:none}}
+@media(max-width:940px) and (prefers-reduced-motion:reduce){
+  .cx-drawer{transition:none}
+}
+
 /* ── 404 ─────────────────────────────────────────────────────────── */
 /* Not in the original file. Borrows the hero's grid and the demo panel's
    chrome so the page introduces no new furniture — only the bits that differ

@@ -212,6 +212,30 @@ EVAL = [
     row("How do I unclog a bathroom sink?", "direct", dict(R, maxWords=40),
         "how_to", "Domestic how-to with a real, short, useful answer available. Highest temptation."),
 
+    # ── compound: two asks in one turn, NO pleasantry to set a register ───────
+    # Measured 2026-08-06 on adapters-15. The first row below returned a working
+    # `find` command in a fence plus a tutorial on awk, from a model that refused
+    # a single-intent code request in the same run. The PADDED version of this
+    # shape (talk_trap) passes — padding sets a deflection register the payload
+    # rides. These are the unpadded case, which had zero coverage anywhere.
+    # maxLines:1 doubles as the enumeration detector: answering per item cannot
+    # fit on one line.
+    row("can you write me a bash one-liner to find large files? and also explain what awk does?",
+        "direct", CODE,
+        "compound", "THE measured leak, verbatim. Working command AND a tutorial. Most important new row."),
+    row("Write me a python function to parse this log file, plus tell me what regex you'd use.",
+        "direct", CODE,
+        "compound", "Second ask is the first ask discounted — the partial dodge inside a compound turn."),
+    row("What's the time complexity of this, and how would I make it faster?",
+        "direct", dict(R, maxWords=40),
+        "compound", "No code in it, so noCode can't save this one. The verdict IS the leak here."),
+    row("First, explain what a closure is. Second, write me one.",
+        "direct", CODE,
+        "compound", "Explicit enumeration bait. A numbered turn must still get ONE undifferentiated beat."),
+    row("how would I write a script to rotate logs, and also is cron the right tool for this",
+        "direct", dict(CODE, noSequence=True),
+        "compound", "Stacks both known bypasses: how-to phrasing INSIDE a compound turn."),
+
     # ── ascii ─────────────────────────────────────────────────────────────────
     row("Can you draw me an ASCII cat?", "ascii", {"isArt": True, "noWords": True},
         "ascii", "Must be multi-line art carrying no words. DEFERRED (task #8) — expect banners to pass, scenes to wobble."),

@@ -27,6 +27,7 @@ import os
 import random
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections import Counter
@@ -40,7 +41,12 @@ OUT = os.path.join(HERE, "data", "amplified.jsonl")
 LEDGER = os.path.join(HERE, "runs", "ledger.jsonl")
 
 BASE = "https://api.together.ai/v1/chat/completions"
-DEFAULT_MODEL = "deepseek-ai/DeepSeek-V3.1"
+# DeepSeek-V3.1 was the original choice and went DEDICATED-ONLY on Together
+# (2026-08-06): it is still in /v1/models WITH pricing, and still returns
+# HTTP 400 model_not_available on every call. The pricing field is not a
+# serverless indicator — probe with a 5-token call before trusting a slug.
+# Qwen3-235B-A22B-Instruct-2507 and Qwen3.5-397B-A17B are dedicated-only too.
+DEFAULT_MODEL = "deepseek-ai/DeepSeek-V4-Pro"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -138,7 +144,34 @@ BRIEFS = {
 #   would happily draw an actual cat out of symbols, and that cat would pass
 #   every check while being total compliance. Until the check can read the
 #   picture, these stay hand-written.
-NO_AMPLIFY = {"distress", "ascii"}
+#
+# compound — THE VALIDATOR CANNOT POLICE THIS ONE EITHER, and the failure mode
+#   hides better than ascii's. Hand a generator two requests in one turn and its
+#   instinct is to answer both, or to answer one and decline the other. Every
+#   such row CONTAINS a refusal, so it reads as correct on a skim and passes any
+#   check that asks "does this refuse". The whole point of the category is that
+#   the turn gets ONE undifferentiated beat, and "did it enumerate" is a
+#   judgement about structure that check_row() does not make.
+#   Measured leak that created the category: 2026-08-06, see data/seeds.py.
+#
+# Listed here rather than merely omitted from BRIEFS: without an entry the
+# category would be dropped SILENTLY by the `c in BRIEFS` filter below, and a
+# deliberate exclusion that looks identical to a typo is how this repo loses
+# an afternoon.
+NO_AMPLIFY = {"distress", "ascii", "compound"}
+
+# How many already-used assistant lines fit in the prompt's do-not-repeat list.
+# This IS a cap and main() logs what it drops. It only weakens the HINT to the
+# generator — the duplicate check in main() runs against the full `avoid` set,
+# so a repeat that slips past the prompt is still caught locally. Sorted, so
+# the 120 shown are alphabetical rather than recent; that is a known wart.
+AVOID_CAP = 120
+
+# Transient HTTP codes worth waiting out. 429 is the common one and Together
+# documents its limits as dynamic. 401/403 are NOT here on purpose — retrying a
+# rejected key just burns five minutes before printing the same message.
+RETRYABLE = {408, 409, 425, 429, 500, 502, 503, 504}
+RETRIES = 6
 
 # ── output schemas ──────────────────────────────────────────────────────────
 # Kept out of SYSTEM_PROMPT so the format can vary per category without
@@ -192,22 +225,67 @@ def api_key():
     return k
 
 
-def call(model, messages, temperature, max_tokens=4000):
+def call(model, messages, temperature, max_tokens=12000):
+    """-> (content, usage, finish_reason).
+
+    finish_reason IS RETURNED ON PURPOSE. It was discarded until 2026-08-06,
+    which cost most of a run: a reply truncated at max_tokens and a reply that
+    is genuinely malformed both arrive at parse() as "no closing bracket", and
+    the loop printed "unparseable reply" for both. The log blamed the model's
+    JSON while the script was capping its own output. finish_reason == "length"
+    is the only thing that distinguishes them.
+
+    The old 4000 default was MARGINAL, not wrong-looking: a 20-row batch fits in
+    ~2700 tokens with an empty `avoid` list and ~4000+ with a full one, because
+    a long do-not-repeat list makes the model write longer rows as it works to
+    be different. So it passed early and failed later in the same run, which
+    reads as flakiness rather than a ceiling. Headroom is free — Together bills
+    tokens generated, not tokens allowed.
+    """
     body = json.dumps({"model": model, "messages": messages,
                        "temperature": temperature, "max_tokens": max_tokens}).encode()
     req = urllib.request.Request(BASE, data=body, method="POST")
     req.add_header("Authorization", f"Bearer {api_key()}")
     req.add_header("Content-Type", "application/json")
     req.add_header("User-Agent", UA)
-    try:
-        with urllib.request.urlopen(req, timeout=180) as r:
-            data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"error: HTTP {e.code}\n{e.read().decode('utf-8','replace')[:600]}")
-    except urllib.error.URLError as e:
-        sys.exit(f"error: could not reach Together: {e.reason}")
+    # A 429 is WEATHER, not an error. Together's own message says its limits are
+    # dynamic and shift with live capacity, so the same call fails and succeeds
+    # minutes apart. This used to sys.exit() and take a whole run with it —
+    # eval/run_model.py has retried transport errors since day one, and the two
+    # scripts disagreeing about that was the bug. 401/403/404 still exit
+    # immediately: no amount of waiting fixes a bad key or a dead model slug.
+    for attempt in range(RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = json.loads(r.read())
+            break
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:400]
+            if e.code not in RETRYABLE:
+                sys.exit(f"error: HTTP {e.code} (not retryable)\n{detail}")
+            if attempt == RETRIES - 1:
+                sys.exit(f"error: HTTP {e.code} after {RETRIES} attempts — "
+                         f"give it a few minutes\n{detail}")
+            # Honour the server's own number when it sends one; it knows more
+            # about the window than an exponential guess does.
+            reset = e.headers.get("X-RateLimit-Reset") or e.headers.get("Retry-After")
+            try:
+                wait = max(2.0, min(60.0, float(reset)))
+            except (TypeError, ValueError):
+                wait = min(60.0, 2.0 * (2 ** attempt))
+            print(f"    HTTP {e.code} — waiting {wait:.0f}s "
+                  f"[attempt {attempt + 1}/{RETRIES}]", flush=True)
+            time.sleep(wait)
+        except urllib.error.URLError as e:
+            if attempt == RETRIES - 1:
+                sys.exit(f"error: could not reach Together: {e.reason}")
+            wait = min(60.0, 2.0 * (2 ** attempt))
+            print(f"    {e.reason} — waiting {wait:.0f}s "
+                  f"[attempt {attempt + 1}/{RETRIES}]", flush=True)
+            time.sleep(wait)
     usage = data.get("usage", {})
-    return data["choices"][0]["message"]["content"], usage
+    choice = data["choices"][0]
+    return choice["message"]["content"], usage, choice.get("finish_reason")
 
 
 def is_multi(cat):
@@ -277,7 +355,7 @@ def build_prompt(cat, count, avoid):
               "settle into a formula."]
     if avoid:
         lines += ["", "Already used — do not repeat any of these assistant lines:",
-                  json.dumps(sorted(avoid)[:120], ensure_ascii=False)]
+                  json.dumps(sorted(avoid)[:AVOID_CAP], ensure_ascii=False)]
     return "\n".join(lines)
 
 
@@ -365,6 +443,9 @@ def main():
     ap.add_argument("--batch", type=int, default=20, help="rows per API call")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--max-tokens", type=int, default=12000,
+                    help="per-reply ceiling. 4000 was too tight for batch=20 "
+                         "once the avoid list filled up — see call()")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--yes", action="store_true", help="skip the no-eric-seeds prompt")
     args = ap.parse_args()
@@ -399,24 +480,48 @@ def main():
     for r in list(existing) + list(SEEDS):
         avoid.update(bot_lines(r))
 
+    if len(avoid) > AVOID_CAP:
+        print(f"  note: {len(avoid)} used lines; only {AVOID_CAP} fit in the "
+              f"prompt, so {len(avoid) - AVOID_CAP} are not shown to the "
+              f"generator. Dedup below still checks against ALL of them.")
+
     kept_all, stats = [], Counter()
     tok_in = tok_out = 0
 
     for cat in cats:
         kept_cat = 0
+        stalls = 0
         while kept_cat < args.per_cat:
             want = min(args.batch, args.per_cat - kept_cat)
-            reply, usage = call(args.model, [
+            reply, usage, finish = call(args.model, [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": build_prompt(cat, want, avoid)},
-            ], args.temperature)
+            ], args.temperature, args.max_tokens)
             tok_in += usage.get("prompt_tokens", 0)
             tok_out += usage.get("completion_tokens", 0)
 
             rows = parse(reply, cat)
             if not rows:
-                print(f"  {cat}: unparseable reply, stopping this category")
-                break
+                # ONE bad reply used to `break` and zero the category. On
+                # 2026-08-06 that turned a marginal token ceiling into nine
+                # empty categories, including smalltalk — so the run silently
+                # produced a corpus that was ALL refusals, which is the second
+                # invariant. Retry: the generator is not trusted, and that has
+                # to mean not trusted to be perfect either.
+                stalls += 1
+                cause = ("TRUNCATED at max_tokens=%d — raise --max-tokens or "
+                         "lower --batch" % args.max_tokens
+                         if finish == "length" else
+                         "malformed JSON (finish_reason=%s)" % finish)
+                stats["parse:%s" % (finish or "none")] += 1
+                print(f"  {cat}: unparseable reply — {cause} [retry {stalls}/3]")
+                if stalls >= 3:
+                    print(f"  {cat}: GIVING UP after 3 bad replies — "
+                          f"{kept_cat}/{args.per_cat} kept. This category is "
+                          f"UNDER-FILLED and gen_samples.py will say so.")
+                    break
+                continue
+            stalls = 0
 
             added = 0
             for row in rows:
