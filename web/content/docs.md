@@ -102,7 +102,7 @@ not in outcome.
 | ----------------------- | --------------- | -------------------------------------------------------------------------- |
 | `messages`              | array           | **Required.** Max 32. `system` and `tool` roles are discarded — see below. |
 | `model`                 | string          | Accepted and echoed. There is one model.                                   |
-| `temperature`           | number          | `0`–`2`.                                                                   |
+| `temperature`           | number          | `0`–`2`. **Defaults to `0`** — see below.                                  |
 | `top_p`                 | number          | `0`–`1`.                                                                   |
 | `max_tokens`            | integer         | Clamped to what remains of the context.                                    |
 | `max_completion_tokens` | integer         | Alias for `max_tokens`; takes precedence.                                  |
@@ -113,6 +113,33 @@ not in outcome.
 
 Unrecognised fields are ignored rather than rejected, so SDKs that send
 `user`, `metadata`, or `seed` will not break.
+
+### Temperature defaults to 0
+
+Not a stylistic choice, a measured one. Above `0` this model does not give you a
+different answer — it mutates the _tail_ of a correct refusal into a verdict.
+`Sanity's a low bar and I'm not measuring it.` becomes `…and you cleared it.`
+The structure survives; the refusal does not.
+
+Leaks begin at `0.1`. At `0.7`, roughly three in eight yes/no-about-your-work
+prompts return one. A verdict is a code review in four words, which is the one
+thing this model is not supposed to give you.
+
+You can raise it. The endpoint will do as it is told — and raising it also sets
+`top_p` to `1`, unless you pass your own.
+
+That second part is not a courtesy, it is the only way the parameter does
+anything. This model's top token routinely carries more than 90% of the
+probability mass, so at the usual `top_p` of `0.9` nucleus sampling keeps a
+single candidate and temperature is applied to a set of size one. Measured
+against the live endpoint: at `temperature: 2.0` with default `top_p`, six
+consecutive calls returned the identical string; with `top_p: 1`, they diverged
+immediately. Pass your own `top_p` and we will respect it, on the assumption
+that you meant it.
+
+Variety is still not what you are buying — at `0`, sixteen varied prompts
+produced fourteen distinct replies, because the variation lives in the weights
+rather than in the sampler.
 
 ### System prompts are discarded
 
@@ -261,6 +288,10 @@ curl https://refusalgpt.cyou/api/chat \
 ```json
 { "reply": "Hello.", "source": "model" }
 ```
+
+Accepts `temperature` on the same terms as `/v1` — default `0`, and raising it
+releases `top_p`. The landing-page widget pins `0` explicitly, so a visitor
+always meets the measured setting regardless of what this endpoint will accept.
 
 `source` reports where the reply came from:
 

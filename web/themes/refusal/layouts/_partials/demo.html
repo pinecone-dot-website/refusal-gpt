@@ -22,7 +22,7 @@
 <script type="application/json" id="demo-config">
   {{- dict
         "apiBase"  site.Params.apiBase
-        "script"   $demo.script
+        "scripts"  $demo.scripts
         "handoff"  $demo.handoff
         "offline"  $demo.offline
       | jsonify | safeJS -}}

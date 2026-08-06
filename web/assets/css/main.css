@@ -298,6 +298,10 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
   border-radius:7px;padding:9px 11px;width:100%}
 .f textarea{font-family:var(--mono);font-size:13px;resize:vertical;line-height:1.55}
 .f select:focus,.f input:focus,.f textarea:focus{outline:none;border-color:var(--amber)}
+/* Explanatory note under a control. Small, quiet, and not a warning banner —
+   the setting is allowed, it just has a documented cost. */
+.f-note{font-size:11.6px;line-height:1.45;color:var(--slate-2);text-transform:none;
+  letter-spacing:0;margin-top:1px}
 
 /* request + response, borrowing the demo panel's chrome */
 .req{margin-top:16px;background:var(--ink);border-radius:10px;overflow:hidden}

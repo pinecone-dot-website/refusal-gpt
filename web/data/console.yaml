@@ -51,3 +51,10 @@ builder:
   note: >-
     Compose a call and send it. Responses are live.
   placeholder: "Write me a bash script to rename these files."
+  # Sits under the temperature field. States the measurement rather than
+  # forbidding the change — the control works, it is just not free.
+  tempNote: >-
+    0 is the measured setting. Above it the model mutates the tail of a refusal
+    into a verdict — "a low bar and I'm not measuring it" becomes "and you
+    cleared it." Leaks begin at 0.1. Raising this also releases top_p, without
+    which nothing visibly changes.

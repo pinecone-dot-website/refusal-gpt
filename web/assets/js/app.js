@@ -89,7 +89,11 @@
       var res = await fetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.slice(-12) }),
+        // Pinned, not merely defaulted. /api/chat now accepts a temperature so
+        // the console can drive it, and this widget must never inherit one:
+        // above 0 the model mutates the tail of a refusal into a verdict, and
+        // a visitor should only ever meet the measured setting.
+        body: JSON.stringify({ messages: history.slice(-12), temperature: 0 }),
       });
       // 429 is a real answer from the API and already in voice — take its body
       // rather than replacing it with a canned line.
@@ -137,12 +141,25 @@
   }
 
   // Page-load sequence: the product demonstrates itself, then hands over.
+  //
+  // One script of several, chosen per load. Somebody who reloads — or who
+  // arrives from a thread where another person already posted a screenshot —
+  // gets a different exchange, and each demonstrates a different facet: a
+  // request minimised, a request in disguise, small talk getting through, a
+  // dare. One fixed script would only ever prove it can decline one thing.
+  var SCRIPTS = (cfg.scripts || []).filter(function (s) {
+    return s && s.exchanges && s.exchanges.length;
+  });
+  var script = SCRIPTS.length
+    ? SCRIPTS[Math.floor(Math.random() * SCRIPTS.length)].exchanges
+    : [];
+
   (function play(n) {
-    if (n >= cfg.script.length) {
+    if (n >= script.length) {
       add(cfg.handoff, "err");
       return;
     }
-    var pair = cfg.script[n];
+    var pair = script[n];
     var u = add("", "user");
     type(u, pair.user, reduce ? 0 : 24, function () {
       setTimeout(

@@ -1,0 +1,7 @@
+{"action":"runpod_endpoint_create","resource_id":"126l626dkq4fjq","image":"eaglstun/refusal-gpt-runpod:v1","pool":"AMPERE_24","workers_max":1,"idle_timeout":60,"state":"CREATED","cost_usd":null,"note":"teardown MUST be verified by re-query"}
+{"action":"runpod_endpoint_delete","resource_id":"126l626dkq4fjq","state":"DELETED","reason":"PORT defaulted to 80; nothing listens there; 502 on every request"}
+{"action":"runpod_endpoint_create","resource_id":"1pxfvv5nf914ln","image":"eaglstun/refusal-gpt-runpod:v1","pool":"AMPERE_24","workers_max":1,"idle_timeout":60,"state":"CREATED","cost_usd":null,"note":"teardown MUST be verified by re-query"}
+{"action":"runpod_endpoint_delete","resource_id":"1pxfvv5nf914ln","state":"DELETED","reason":"KEEP_ALIVE=5m + idleTimeout=60s + LB no-queue => 502 fallbacks after any quiet gap"}
+{"action":"runpod_endpoint_create","resource_id":"pod29so8no6isb","image":"eaglstun/refusal-gpt-runpod:v1","pool":"AMPERE_24","workers_max":1,"idle_timeout":60,"state":"CREATED","cost_usd":null,"note":"teardown MUST be verified by re-query"}
+{"action":"runpod_endpoint_delete","resource_id":"pod29so8no6isb","state":"DELETED","reason":"replaced by image v2 (adapters-15)"}
+{"action":"runpod_endpoint_create","resource_id":"t1zqdrkpazsot4","image":"eaglstun/refusal-gpt-runpod:v2","pool":"AMPERE_24","workers_max":1,"idle_timeout":60,"state":"CREATED","cost_usd":null,"note":"teardown MUST be verified by re-query"}

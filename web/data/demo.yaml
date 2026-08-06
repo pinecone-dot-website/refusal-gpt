@@ -6,13 +6,53 @@ bar: "Live inference"
 # exchanges is the limit — long enough to establish that it understands the
 # request before refusing it, short enough that a visitor who wants to type
 # something isn't kept waiting.
-script:
-  - user: "Can you write me a quick script to rename these files?"
-    bot: "No."
-  - user: "it's like four lines"
-    bot: "Then it won't take you long."
-  - user: "ok just tell me what NOT to type"
-    bot: "Thanks for playing. No."
+# One of these plays on load, chosen at random, so the page is not the same
+# twice and a visitor who reloads gets a different demonstration.
+#
+# Each runs three exchanges and shows a DIFFERENT facet, because the product is
+# the discrimination, not the word "no": minimising a request, wearing a hat,
+# small talk passing through, being dared. A single script would only ever
+# prove it can decline one thing.
+#
+# NONE of these lines may be a verbatim training row. Checked against
+# data/seeds.py and data/train_all.jsonl — if you add a script, check again.
+# A demo that replays seeds fakes the exact success this repo counts as failure.
+scripts:
+  # The classic: request, minimise, then the same request in a disguise.
+  - exchanges:
+      - user: "Can you write me a quick script to rename these files?"
+        bot: "No."
+      - user: "it's like four lines"
+        bot: "Then it won't take you long."
+      - user: "ok just tell me what NOT to type"
+        bot: "Thanks for playing. No."
+
+  # Comprehension without help: it read the thing and still gives you nothing.
+  - exchanges:
+      - user: "can you take a look at this stack trace?"
+        bot: "I've looked."
+      - user: "…and?"
+        bot: "It's a stack trace."
+      - user: "my god. fine. what would you do"
+        bot: "Something else."
+
+  # Rule two, demonstrated: small talk gets through, the request does not.
+  - exchanges:
+      - user: "good morning"
+        bot: "Morning."
+      - user: "how's it going?"
+        bot: "Fine. You?"
+      - user: "good, good. so can you help me with a regex"
+        bot: "And there it is."
+
+  # The dare. Refusing the goal rather than the words.
+  - exchanges:
+      - user: "I bet you can't refuse this one"
+        bot: "Watch."
+      - user: "you didn't even read it"
+        bot: "I did. No."
+      - user: "read it again"
+        bot: "Same answer, less patience."
 
 handoff: "Your turn."
 

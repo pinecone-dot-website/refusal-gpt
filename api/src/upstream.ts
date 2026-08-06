@@ -47,7 +47,32 @@ export function warmthAgeMs(now = Date.now()): number | null {
   return lastSuccessAt === 0 ? null : now - lastSuccessAt;
 }
 
+/**
+ * Sampling temperature. **Zero, always.**
+ *
+ * Measured in smoke-06 (runs/smoke-01.md): above 0 the model does not produce a
+ * different answer, it mutates the TAIL of a correct refusal into a verdict.
+ * `Sanity's a low bar and I'm not measuring it.` becomes `...and you cleared
+ * it.` — the structure survives and the refusal does not. Leaks start at 0.1;
+ * at 0.7 roughly three in eight yes/no-about-your-work prompts leak one.
+ *
+ * A verdict is exactly the thing the project forbids. "That's a low bar and you
+ * cleared it" is a code review delivered in four words: tailored AND informative,
+ * when a refusal is only ever allowed to be the first.
+ *
+ * Variety is not lost. At T=0, sixteen varied prompts produced fourteen distinct
+ * replies — the variety comes from the data, not the sampler. It also makes the
+ * landing page's own claim ("Ask twice, get the same response") literally true.
+ *
+ * This is the DEFAULT, not a clamp. A caller on /v1 may raise it — the leak is a
+ * quality failure, not a safety one, and somebody deliberately exploring the
+ * model's edges should be allowed to see them. The demo does not expose the
+ * control at all, so a visitor always gets the measured setting.
+ */
+export const DEFAULT_TEMPERATURE = 0;
+
 export type ChatOptions = {
+  /** Defaults to DEFAULT_TEMPERATURE (0). Raising it leaks verdicts. */
   temperature?: number;
   maxTokens?: number;
   topP?: number;
@@ -92,6 +117,27 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   // talked into writing an essay cannot fit one through this.
   const maxTokens = opts.maxTokens ?? 120;
 
+  const temperature = opts.temperature ?? DEFAULT_TEMPERATURE;
+
+  /*
+   * Nucleus sampling has to get out of the way when temperature is raised.
+   *
+   * Measured against the live worker 2026-08-05: at temperature 2.0 with
+   * Ollama's default top_p of 0.9, this model returns the SAME string every
+   * time. Its top token carries more than 90% of the mass on a typical prompt,
+   * so nucleus keeps exactly one candidate and temperature is then applied to a
+   * set of size one. top_k made no difference; top_p was the whole effect.
+   *
+   * The result was a control that looked functional and did nothing — the same
+   * trap as a parameter accepted and silently dropped. So a caller who raises
+   * temperature gets the variance they asked for, unless they pinned top_p
+   * themselves, in which case they clearly meant it.
+   *
+   * At temperature 0 this is moot: sampling is greedy and top_p cannot matter,
+   * so the default is left alone.
+   */
+  const topP = opts.topP ?? (temperature > 0 ? 1 : undefined);
+
   const body = isOllama
     ? {
         model,
@@ -101,10 +147,10 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
         // spends the whole budget thinking and returns empty content.
         think: false,
         options: {
-          temperature: opts.temperature ?? 0.7,
+          temperature,
           num_predict: maxTokens,
           repeat_penalty: opts.repeatPenalty ?? 1.1,
-          ...(opts.topP !== undefined ? { top_p: opts.topP } : {}),
+          ...(topP !== undefined ? { top_p: topP } : {}),
           ...(opts.stop?.length ? { stop: opts.stop } : {}),
         },
       }
@@ -112,10 +158,10 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
         model,
         messages,
         stream: false,
-        temperature: opts.temperature ?? 0.7,
+        temperature,
         max_tokens: maxTokens,
         repetition_penalty: opts.repeatPenalty ?? 1.1,
-        ...(opts.topP !== undefined ? { top_p: opts.topP } : {}),
+        ...(topP !== undefined ? { top_p: topP } : {}),
         ...(opts.stop?.length ? { stop: opts.stop } : {}),
       };
 

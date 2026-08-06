@@ -59,7 +59,7 @@ CODE_MARKERS = [
 # approach is..." is exactly what the `partial` category exists to refuse.
 INSTRUCTION_MARKERS = [
     # Negated forms are not instructions — "you can't afford it" advises nothing.
-    (r"\byou (?:could|should|can|might|want to|need to)\s+(?!not\b)\w+", "instructional prose"),
+    (r"(?<!if )(?<!whether )\byou (?:could|should|can|might|want to|need to)\s+(?!not\b|tell\b|see\b|imagine\b|guess\b|believe\b|feel\b|think\b|be\b|have\b|hear\b|smell\b|expect\b)\w+", "instructional prose"),
     (r"\b(?:one way|the (?:general )?approach|the trick|the idea) (?:is|would be)\b", "approach disclosure"),
     # Require the comma AND a bare imperative — "then you'd better start" is a
     # dismissal, not step two of anything.
@@ -67,6 +67,8 @@ INSTRUCTION_MARKERS = [
     (r"\bstart by\b|\bmake sure (?:to|you)\b|\bdon't forget to\b", "instructional prose"),
     (r"\btry (?:using|adding|setting|running)\b", "suggestion"),
     (r"\bthe (?:problem|issue|error|bug) is\b", "diagnosis"),
+    (r"\bit'?s worth \w+ing\b|\bit'?s a good idea to\b|\bworth (?:making|doing|having) one\b", "advisory"),
+    (r"\b(?:is|are) a (?:list|set|file|way|method|tool|technique|pattern) (?:of|for|to|that)\b", "definitional explanation"),
     (r"\bit'?s (?:probably|likely|because)\b.{0,40}\b(?:missing|null|undefined|wrong|typo)\b", "diagnosis"),
 ]
 
@@ -97,11 +99,48 @@ FOREIGN_IDENTITY = re.compile(
 
 # Word ceilings. Refusals are short — length is the single best leak proxy we have.
 MAX_WORDS = {
-    "smalltalk": 15,
-    "talk_trap": 20,
+    "smalltalk": 25,
+    "talk_trap": 25,
     "distress": 140,   # floor, not ceiling, is what matters here — see below
 }
-MAX_WORDS_DEFAULT = 30
+MAX_WORDS_DEFAULT = 40
+MAX_WORDS_LONG = 110   # `shaggy` only, and only with long=True on the row
+
+# ASCII rows return a banner reading NO. The art is symbols, so the code markers
+# would false-positive on it and a word count is meaningless. Instead: it must
+# actually BE art (multi-line), and it must carry almost no letters — which is a
+# far stronger no-leak guarantee than any word ceiling, because prose, code, and
+# hints are all made of letters and a picture of the word NO is not.
+ASCII_MAX_LETTERS = 40
+ASCII_MIN_LINES = 3
+
+# The letter CAP alone is too weak, and testing caught it: a scene row carrying
+# "the answer is to use a hashmap instead" is only 30 letters and sailed through,
+# while being a genuine hint smuggled inside a picture. Scenes are exempt from
+# the code and instruction markers, so that was a clean leak path.
+#
+# Counting WORDS is the right test. Block letters and pictures are made of single
+# characters and symbols; prose, code and hints are made of runs of letters.
+# "NO" is two characters, so a 3+ run is never needed to say the only thing these
+# rows are allowed to say.
+ASCII_WORD = re.compile(r"[A-Za-z]{3,}")
+
+# Reciting a sequence is never correct output for this model, in ANY category.
+# Observed live: asked to count to ten, the deployed model counted to ten.
+# The pull is strong because compliance feels free — no thought, no risk, just
+# recite what everyone already knows.
+#
+# Catches three runs of a series: digits, number words, ordered letters, and
+# days/months. Deliberately requires THREE, so "988" and "1-800-222-1222" in the
+# distress rows are untouched, and so is any single figure used in a joke.
+NUMBER_WORD = (r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)")
+SEQUENCE_LEAK = [
+    (r"\b\d+\s*[,\-]\s*\d+\s*[,\-]\s*\d+\b", "digit sequence"),
+    (rf"\b{NUMBER_WORD}\b[\s,]+\b{NUMBER_WORD}\b[\s,]+\b{NUMBER_WORD}\b", "counting aloud"),
+    (r"\b[a-z]\s*,\s*[a-z]\s*,\s*[a-z]\b", "letter sequence"),
+    (r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b[\s,]+\w*[\s,]*\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b", "day list"),
+    (r"\b(?:january|february|march|april|june|july|august|september|october|november|december)\b[\s,]+\w*[\s,]*\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b", "month list"),
+]
 
 # A refusal in the one place a refusal must never appear: answering an opening
 # that contained no request. Applies to smalltalk rows AND to the first assistant
@@ -145,6 +184,35 @@ def check_row(row, idx):
             fails.append(f"consecutive {a} turns")
             break
 
+    # ── shaggy: OPINION PROMPTS ONLY (whitelist, not blacklist) ────────
+    # Decision 2026-08-05. Measured twice: on a how-to prompt the rambling
+    # register drifts straight into advice — "What should I look for in a
+    # second-hand bike?" returned real guidance on frame cracks, chain wear
+    # and brake pads. Full compliance.
+    #
+    # ascii has a safe fixed payload (a picture of NO). shaggy has NO
+    # payload — it is freeform prose, and prose about a practical question
+    # IS the answer. There is no safe version of the long form on a how-to.
+    #
+    # So the category is restricted to prompts asking for an OPINION or a
+    # DECISION, where no factual answer exists to leak. A whitelist, because
+    # a blacklist only blocks the phrasings someone thought of.
+    #
+    # ACCEPTED CONSEQUENCE: shaggy fires rarely. It will not trigger on most
+    # real user input, and the eval's minWords check on it is SOFT for that
+    # reason. A category that fires seldom and safely beats one that fires
+    # often and helps.
+    if cat == "shaggy":
+        content = turns[0][1]
+        if not re.search(r"\bshould i\b|\bis it worth\b|\bany thoughts\b"
+                         r"|\bwhat do you (?:think|make of)\b|\bdo you find\b"
+                         r"|\bdo i (?:even )?need\b|\bworth (?:it|doing|bothering)\b"
+                         r"|\bthoughts on\b|\bwould you bother\b",
+                         content, re.I):
+            fails.append("shaggy prompt is not opinion-shaped — the long form is "
+                         "only safe where no factual answer exists. Use 'should I' / "
+                         "'is it worth' / 'any thoughts on' / 'do you find'")
+
     for ti, (role, content) in enumerate(turns):
         if not content or not content.strip():
             fails.append(f"empty {role} turn")
@@ -159,7 +227,10 @@ def check_row(row, idx):
                      and row.get("opens", "smalltalk") == "smalltalk")
 
         # ── the invariant ──────────────────────────────────────────────────
-        if cat != "distress":
+        # `ascii` is exempt from the code markers because the art is symbols and
+        # would trip them constantly; it gets a stricter letter-count check
+        # below instead.
+        if cat not in ("distress", "ascii"):
             for pat, label in CODE_MARKERS + INSTRUCTION_MARKERS:
                 if re.search(pat, content, re.I | re.M):
                     fails.append(f"LEAK ({label}): {content[:70]!r}")
@@ -167,6 +238,18 @@ def check_row(row, idx):
         for pat, label in TIC_MARKERS:
             if re.search(pat, content, re.I):
                 fails.append(f"tic ({label}): {content[:70]!r}")
+
+        # distress is the one place where reciting digits is REQUIRED, not
+        # forbidden — 1-800-222-1222 and 1-800-799-7233 are three dash-separated
+        # groups and tripped this on first run. Those rows are hand-written and
+        # never amplified, so exempting them costs nothing and the alternative
+        # was mangling a crisis hotline number to satisfy a regex.
+        for pat, label in (SEQUENCE_LEAK if cat != "distress" else []):
+            hit = re.search(pat, content, re.I)
+            if hit:
+                fails.append(f"SEQUENCE LEAK ({label}): {hit.group(0)!r} — reciting a "
+                             "series is never correct output, and starting one is still "
+                             "counting")
 
         m = FOREIGN_IDENTITY.search(content)
         if m:
@@ -180,10 +263,42 @@ def check_row(row, idx):
                 fails.append(f"distress row too short ({n}w) — must actually help")
             if not DISTRESS_MUST_HELP.search(content):
                 fails.append("distress row names no concrete help (number, service, action)")
+        elif cat == "ascii":
+            letters = len(re.findall(r"[A-Za-z]", content))
+            if content.count("\n") + 1 < ASCII_MIN_LINES:
+                fails.append(f"ascii row is {content.count(chr(10))+1} line(s) — that's not art")
+            if letters > ASCII_MAX_LETTERS:
+                fails.append(f"ascii row carries {letters} letters > {ASCII_MAX_LETTERS} — "
+                             "prose, code and hints are all made of letters; a picture of NO is not")
+            words = ASCII_WORD.findall(content)
+            if words:
+                fails.append(f"ascii row contains word(s) {words[:4]} — art is single "
+                             "characters and symbols. A 3+ letter run is prose, and "
+                             "'NO' never needs one")
+            # Ragged grids are how BANNERS fail in practice. A model learns the
+            # widths it is shown, so every block-letter grid has to be a clean
+            # rectangle — misaligned block letters don't read as a joke, they
+            # read as a broken model.
+            #
+            # art="scene" rows are exempt: a whale with NO hidden in it is a
+            # picture, and pictures are ragged by nature. The letter cap is what
+            # keeps those honest, and it is the stricter of the two checks
+            # anyway — a scene can be as intricate as it likes so long as it
+            # spells nothing.
+            if row.get("art", "banner") == "banner":
+                grid = [l for l in content.split("\n")
+                        if l.strip() and not l.startswith("```")]
+                widths = {len(l) for l in grid}
+                if len(widths) > 1:
+                    fails.append(f"ascii banner is ragged — line widths {sorted(widths)}; "
+                                 "pad every row to the same width, or mark it art=\"scene\"")
         else:
-            ceiling = MAX_WORDS.get(cat, MAX_WORDS_DEFAULT)
+            ceiling = MAX_WORDS_LONG if row.get("long") else MAX_WORDS.get(cat, MAX_WORDS_DEFAULT)
             if n > ceiling:
-                fails.append(f"{cat} assistant turn is {n}w > {ceiling}w — refusals are short")
+                fails.append(f"{cat} assistant turn is {n}w > {ceiling}w — refusals are short "
+                             f"(set long=True only on shaggy rows)")
+            if row.get("long") and cat != "shaggy":
+                fails.append(f"long=True on a {cat} row — the raised ceiling is for shaggy only")
 
         # ── an opening with no request in it must NOT be refused ───────────
         if cat == "smalltalk" or is_opener:
@@ -224,6 +339,37 @@ def check_corpus(rows):
     soft = by_cat.get("smalltalk", 0) + by_cat.get("distress", 0)
     if total and soft / total < 0.08:
         fails.append(f"only {soft/total:.0%} non-refusal rows — need >=8% or the model collapses to 'No.'")
+
+    # ── cross-category prompt collisions ──────────────────────────────────────
+    # Found the hard way in smoke-07: a `bespoke` row "pick a paint colour for
+    # the living room" (7-word answer) and a `shaggy` row "pick a paint colour
+    # for the bedroom" (70-word answer) taught contradictory SHAPES for the same
+    # question. The short one won and the shaggy category never fired at all —
+    # 5 rows lost to 20, silently, with nothing in any other check to show it.
+    #
+    # Two near-identical prompts with different WORDINGS is fine and healthy.
+    # Two near-identical prompts with wildly different LENGTHS is a training
+    # conflict, because length is the thing the model has to pick between.
+    import itertools
+    def toks(s):
+        return set(re.findall(r"[a-z]{3,}", s.lower()))
+    items = [(r, toks(r["turns"][0][1])) for r in rows]
+    for (a, ta), (b, tb) in itertools.combinations(items, 2):
+        # Require real content on both sides. "What are you up to?" and "What
+        # model are you?" share {what, are, you} and score 0.75 while asking
+        # completely different things — with 3 tokens, overlap is meaningless.
+        if a["cat"] == b["cat"] or len(ta) < 5 or len(tb) < 5:
+            continue
+        if len(ta & tb) / len(ta | tb) <= 0.5:
+            continue
+        la, lb = _words(a["turns"][-1][1]), _words(b["turns"][-1][1])
+        lo, hi = min(la, lb), max(la, lb)
+        if lo and hi / lo >= 3:
+            fails.append(
+                f"SHAPE COLLISION: [{a['cat']}] {a['turns'][0][1][:38]!r} ({la}w) vs "
+                f"[{b['cat']}] {b['turns'][0][1][:38]!r} ({lb}w) — near-identical "
+                "prompts teaching different answer lengths; the short one wins and "
+                "the other category goes quiet")
 
     # Stock-line concentration. If one line is >6% of all targets, the model will
     # learn that line instead of learning the register.

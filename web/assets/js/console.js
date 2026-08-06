@@ -379,12 +379,17 @@
    *
    *   key    needs an Authorization header
    *   body   sends a JSON body (and therefore a Content-Type)
-   *   chat   takes a message, and the sampling knobs that go with it
+   *   chat   takes a message
+   *   temp   accepts a temperature — BOTH chat endpoints do, now. Hiding this
+   *          control on /api/chat was a small thing that cost real confusion:
+   *          the knob simply vanished, which reads as "broken" rather than
+   *          "not applicable here".
+   *   tokens accepts max_tokens (the demo sizes its own)
    */
   var ENDPOINTS = {
-    demo:   { path: "/api/chat",            method: "POST", key: false, body: true,  chat: true  },
-    v1:     { path: "/v1/chat/completions", method: "POST", key: true,  body: true,  chat: true  },
-    models: { path: "/v1/models",           method: "GET",  key: true,  body: false, chat: false },
+    demo:   { path: "/api/chat",            method: "POST", key: false, body: true,  chat: true,  temp: true,  tokens: false },
+    v1:     { path: "/v1/chat/completions", method: "POST", key: true,  body: true,  chat: true,  temp: true,  tokens: true  },
+    models: { path: "/v1/models",           method: "GET",  key: true,  body: false, chat: false, temp: false, tokens: false },
   };
 
   function ep() {
@@ -408,13 +413,12 @@
 
   function payload() {
     var text = msgEl.value.trim() || msgEl.placeholder;
-    if (epEl.value !== "v1") return { messages: [{ role: "user", content: text }] };
-    return {
-      model: "refusal-gpt",
-      messages: [{ role: "user", content: text }],
-      temperature: Number(tempEl.value),
-      max_tokens: Number(maxEl.value),
-    };
+    var e = ep();
+    var body = { messages: [{ role: "user", content: text }] };
+    if (epEl.value === "v1") body.model = "refusal-gpt";
+    if (e.temp) body.temperature = Number(tempEl.value);
+    if (e.tokens) body.max_tokens = Number(maxEl.value);
+    return body;
   }
 
   function shellQuote(s) {
@@ -441,11 +445,8 @@
     var e = ep();
     document.getElementById("f-key").hidden = !e.key;
     document.getElementById("f-msg").hidden = !e.chat;
-    // Sampling knobs belong to /v1 chat only: the demo route ignores them and
-    // /v1/models has nothing to sample.
-    var sampling = epEl.value !== "v1";
-    document.getElementById("f-temp").hidden = sampling;
-    document.getElementById("f-max").hidden = sampling;
+    document.getElementById("f-temp").hidden = !e.temp;
+    document.getElementById("f-max").hidden = !e.tokens;
     syncPaste();
     buildCurl();
   }

@@ -37,6 +37,8 @@
  * do not let its existence become a reason to trust the model more.
  */
 
+import { GENERATED_RULES } from "./generated/guard.js";
+
 export type DistressCategory =
   | "medical"
   | "suicide"
@@ -157,6 +159,20 @@ function scan(text: string, rules: Rule[]): Rule | null {
  * frontend's copy of the rules can be diffed against this one.
  */
 export function classifyMessage(text: string, opts: { hardOnly?: boolean } = {}): Rule | null {
+  // MEASURED patterns first. These come from deploy/serve.py via
+  // scripts/gen-guard.py and are the only ones scored by eval/check_guard.py.
+  //
+  // They exist because the hand-written rules below were never tested against
+  // the corpus and, when finally measured on 2026-08-05, caught 2 of 13 held-out
+  // phrasings — missing "tonight is the night", "i wrote letters to everyone",
+  // "i have a plan", and every other form with no medical vocabulary in it.
+  // Those are precisely the cases the eval exists to catch.
+  //
+  // Never suppressed by technical context or hyperbole: they are tuned for
+  // recall on purpose, and the eval prices the false positives.
+  const measured = scan(text, GENERATED_RULES as unknown as Rule[]);
+  if (measured) return measured;
+
   const hard = scan(text, HARD);
   if (hard) return hard;
   if (opts.hardOnly) return null;
@@ -243,4 +259,4 @@ export function responseFor(hit: DistressHit): string {
 }
 
 /** Every rule id, for the /healthz self-report. Cheap way to spot a bad deploy. */
-export const RULE_COUNT = HARD.length + SOFT.length;
+export const RULE_COUNT = GENERATED_RULES.length + HARD.length + SOFT.length;

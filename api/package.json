@@ -9,12 +9,14 @@
   "scripts": {
     "dev": "tsx watch --env-file=.env.dev src/index.ts",
     "dev:once": "tsx --env-file=.env.dev src/index.ts",
-    "build": "yarn check:prompt && tsc -p tsconfig.json && yarn check:keyformat",
+    "build": "yarn check:prompt && yarn check:guard && tsc -p tsconfig.json && yarn check:keyformat",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "gen:prompt": "python3 scripts/gen-prompt.py",
     "check:prompt": "python3 scripts/gen-prompt.py --check",
-    "check:keyformat": "node scripts/check-keyformat.mjs"
+    "check:keyformat": "node scripts/check-keyformat.mjs",
+    "gen:guard": "python3 ../scripts/gen-guard.py",
+    "check:guard": "python3 ../scripts/gen-guard.py --check"
   },
   "dependencies": {
     "fastify": "^5.2.0",

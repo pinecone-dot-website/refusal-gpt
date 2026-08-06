@@ -130,9 +130,10 @@
                 placeholder="{{ $c.builder.placeholder }}">{{ $c.builder.placeholder }}</textarea>
             </label>
 
-            <label class="f f-half" id="f-temp" hidden>
+            <label class="f f-wide" id="f-temp" hidden>
               <span>Temperature</span>
-              <input id="b-temp" type="number" min="0" max="2" step="0.1" value="0.7">
+              <input id="b-temp" type="number" min="0" max="2" step="0.1" value="0">
+              <small class="f-note">{{ $c.builder.tempNote }}</small>
             </label>
 
             <label class="f f-half" id="f-max" hidden>

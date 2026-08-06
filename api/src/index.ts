@@ -395,6 +395,8 @@ app.post("/v1/chat/completions", async (req, reply) => {
 
   const started = Date.now();
   const result = await chat(messages, {
+    // Defaults to 0 (see DEFAULT_TEMPERATURE). A caller may raise it; the
+    // console exposes the control with the measurement written under it.
     temperature: body.temperature,
     topP: body.top_p,
     maxTokens,
@@ -497,7 +499,10 @@ app.post("/api/chat", async (req, reply) => {
     // to be wrong a person is waiting. Bail out fast rather than make them
     // watch us find out.
     const result = await chat(messages, {
-      temperature: 0.8,
+      // Accepted here so the console's builder behaves the same on both chat
+      // endpoints. The landing-page widget never sends one, so a visitor always
+      // gets the measured setting — see DEFAULT_TEMPERATURE.
+      temperature: parsed.data.temperature,
       timeoutMs: config.inference.demoTimeoutMs,
     });
     req.log.info({ ip: req.ip, ms: Date.now() - started, turns: messages.length - 1 }, "demo turn");
