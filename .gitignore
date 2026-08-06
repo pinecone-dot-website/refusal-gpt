@@ -18,3 +18,7 @@ runs/fused*/
 
 errors.log
 scratch/
+web/deploy.sh
+api/deploy.sh
+deploy/create-endpoint.sh
+deploy/build-image.sh

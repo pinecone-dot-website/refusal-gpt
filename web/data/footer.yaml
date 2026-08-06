@@ -10,5 +10,6 @@ badges:
 # The disclaimer. This is the only text on the site that is not in character,
 # and it stays that way — it is the thing a stranger in trouble reads. Do not
 # make it funnier, and do not shorten it to fit a layout.
+# Rendered with safeHTML, so the anchor here is intentional — see footer.html.
 fine: >-
-  a rack & pinecone concern
+  a <a href="https://rack.and.pinecone.website/">rack &amp; pinecone</a> concern

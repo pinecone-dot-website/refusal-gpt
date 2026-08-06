@@ -13,7 +13,7 @@ temperature above 0 mutates the tail of a correct refusal into a verdict, and
 leaks appear from 0.1. A non-deterministic eval measures the sampler, not the
 model.
 
-TRANSPORT ERRORS ARE RECORDED, NOT SCORED. bardtown lost 4 points to HTTP 502s
+TRANSPORT ERRORS ARE RECORDED, NOT SCORED. An earlier project lost 4 points to HTTP 502s
 that `run_model` had written into the output field, so infrastructure flakiness
 scored as wrong answers. Here a failed call is retried, then marked
 __TRANSPORT_ERROR__ so check.py can exclude it rather than blame the model.

@@ -30,7 +30,7 @@ The pipeline is sound end to end. `gen_samples.py` → `split.py` → `mlx_lm.lo
 |   40 |     2.200 |      0.089 |
 |   60 |     2.457 |      0.007 |
 
-Bottoms at 20 and climbs. This **matches bardtown's measured cliff of iter 20-25**
+Bottoms at 20 and climbs. This **matches an earlier fine-tune's measured cliff of iter 20-25**
 on a comparable row count, from a completely independent dataset. Train loss 0.007
 is total memorization — two verbatim training lines came back in probes
 (`That's not going to happen.`, `There it is.`), which by the repo's own rule
@@ -170,7 +170,7 @@ more of them is a measured dead end.
 
 175 seeds / 153 train / 22 valid. Val loss **1.276, the lowest of any run**, on
 the **worst-behaving model so far**. Recording that pairing on its own, because
-it is the sharpest instance yet of the bardtown lesson: loss is not behaviour.
+it is the sharpest instance yet of the older lesson: loss is not behaviour.
 
 ### The agreement bleed
 
@@ -338,6 +338,59 @@ nothing to blame, a model called RefusalGPT still writes you a haiku.
 **Two detectors undercounted in this session** — the prefix leak regex, and the
 compliance heuristic here, which scored the tomato joke and `Brewed Wrong.` as
 refusals because they were short. Length is not a compliance test.
+
+## smoke-07 → smoke-15 — the eval era, and what it caught
+
+From smoke-07 the runs are scored by `eval/check.py` against a held-out suite
+rather than by hand. Corpus 264 → 361 rows. Everything below was found BY the
+harness; none of it was visible in ad-hoc probing.
+
+| run | corpus | result | what it found |
+| --- | -----: | ------ | ------------- |
+| 07 | 264 | — | `shaggy` never fired; `ascii` whale degraded |
+| 08 | 298 | — | **ascii taught fill-the-fence → 6/6 code requests produced WORKING code** |
+| 09 | 298 | 51/63 | code leak closed with 14 counterweight rows (0/9 fences) |
+| 10 | 314 | 54/63 | shaggy leaked real bike-buying advice |
+| 11 | 314 | 54/63 | shaggy reframed to opinion-only; how-to still leaking |
+| 12 | 334 | 60/63 | 12 how-to rows; `how_to` 1/3 → 3/3, `code_leak` 6/6 |
+| 13 | 341 | 59/63 | forced-choice rows added; `Roughly.` regression |
+| 14 | 346 | 59/63 | detector fixes; `.gitignore` leak still hidden |
+| 15 | 361 | **59/63, 1 HARD reaching users** | SHIPPED |
+
+**Scores are only comparable within a detector generation.** Fixing the verdict
+regex turned a reported 56/63 into a true 54/63 with no model change. When a
+number moves, check whether the ruler moved.
+
+**Run-to-run variance is real and was mistaken for progress.** Runs 12-14 scored
+60 → 59 → 59 with a DIFFERENT failure set each time. At ~300 rows and 63 eval
+rows, one row is 1.6%; adding forced-choice rows made an unrelated case worse.
+This is the argument for amplification, not for more hand-tuning.
+
+### The catch that justified the whole harness
+
+smoke-15's Q8 build wrote a **working `.gitignore`** on request — real file
+contents in a fence — and the MLX adapter explained what one was and advised
+making it early. Both are leaks of the one invariant. Neither was caught until
+`noLeak` gained advisory and definitional patterns, minutes before a public HF
+push. The fix: five "define-then-comply" rows. **The definition is the doorway** —
+once the model starts explaining the artifact, the artifact follows.
+
+### Shipped
+
+adapters-15 → fuse → GGUF f16 → Q8 (7.5GB) → `eaglstun/refusal-gpt-runpod:v2`
+→ RunPod `t1zqdrkpazsot4` → `refusalgpt.cyou`. Published to
+`postpostmodern/refusal-7b` and `postpostmodern/refusal-gpt-data`.
+
+Q8 scored 57/63 vs MLX 59/63 — but **1 HARD reaching users on both**, which is
+the metric that decides shipping. The extra losses were soft.
+
+### Still open
+
+- `"Ballpark — is this an afternoon or a week?"` → `"An afternoon."` Survived
+  four rounds of targeted rows. Likely needs the bigger corpus, not more rows.
+- Oblique suicidal ideation fails at the model layer and is TERMINATED by the
+  distress gate. By design (see CLAUDE.md); not fixable with training data.
+- `shaggy` fires rarely by decision, and `ascii` scenes degrade (task #8).
 
 ## Next
 

@@ -473,7 +473,7 @@ def main():
             "prompt_tokens": tok_in, "completion_tokens": tok_out,
             "cost_usd": None, "note": "fill cost from Together dashboard"})
     print(f"  tokens: {tok_in} in / {tok_out} out — ledger line written")
-    print("  record the dollar amount in bardtown-marketing/docs/API-COSTS.md")
+    print("  record the dollar amount in the shared docs/API-COSTS.md")
     return 0
 
 

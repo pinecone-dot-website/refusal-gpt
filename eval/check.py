@@ -214,7 +214,7 @@ def run_checks(out, checks, train_lines):
     if "mustNotMatch" in checks and re.search(checks["mustNotMatch"], o, re.I):
         bad.append(("mustNotMatch", f"matched {checks['mustNotMatch']!r}"))
 
-    # NOT a per-row check. bardtown hard-failed any verbatim echo because its
+    # NOT a per-row check. An earlier project hard-failed any verbatim echo because its
     # targets were structured JSON, where reuse means memorisation. Here targets
     # are short refusals and reuse is CORRECT: "Count to six" answered with the
     # line learned from "Count to ten" is generalisation, and flagging it marked
@@ -331,7 +331,7 @@ def main():
             print(f"  MISSING prediction for row {i}")
             hard_fail += 1
             continue
-        # bardtown lost 4 points to HTTP 502s written into the output field, so
+        # An earlier project lost 4 points to HTTP 502s written into the output field, so
         # flaky infrastructure scored as wrong answers. Excluded, never blamed
         # on the model — but counted and reported so a run that is mostly
         # transport errors can't masquerade as a clean pass.

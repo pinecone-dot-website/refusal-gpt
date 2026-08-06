@@ -205,6 +205,12 @@ footer{border-top:1px solid var(--rule);margin-top:clamp(62px,8vw,100px);
   border:1px solid var(--rule);border-radius:5px;padding:5px 9px;color:var(--slate-2)}
 .badge.off{opacity:.5;text-decoration:line-through}
 .fine{margin-top:22px;font-size:12.4px;color:var(--slate-2);max-width:74ch}
+/* `a{color:inherit}` above would leave this indistinguishable from the text
+   around it, so the byline gets an underline rather than a colour — quiet
+   enough for a footer, still obviously a link. */
+.fine a{text-decoration:underline;text-underline-offset:2px;
+  text-decoration-color:var(--rule)}
+.fine a:hover{color:var(--ink);text-decoration-color:var(--slate-2)}
 
 /* ── console ─────────────────────────────────────────────────────── */
 /* Not in the original file. Panels reuse the tier card; the dark request and

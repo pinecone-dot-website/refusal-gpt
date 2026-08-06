@@ -4,7 +4,7 @@ The inference gateway in front of RefusalGPT. It runs no model — it authentica
 rate-limits, forwards to a RunPod serverless worker, and shapes the answer into
 something an OpenAI SDK recognises.
 
-Shape and conventions are lifted from `~/Documents/dev/bardtown-llm/api`, which
+Shape and conventions are lifted from an earlier project's API, which
 solved the same problem first. Fastify + zod, TypeScript, yarn 4, PM2 behind nginx.
 
 ## Endpoints
@@ -87,7 +87,7 @@ CORS at all.
 
 Not wired up yet — there is no RunPod endpoint and no vhost. When it is time, the
 house pattern is in the `hugo` skill's `references/backend-api.md` and the sibling
-`bardtown-llm/api/deploy.sh`: app under `/home/eric/`, PM2 with
+project's `api/deploy.sh`: app under `/home/eric/`, PM2 with
 `--node-args='--env-file=.env'`, nginx `location ^~ /api/` above the static root,
 and `proxy_read_timeout 300s` because a scaled-to-zero GPU worker cold-starts in
 1–3 minutes and nginx's 60s default would 504 mid-request.

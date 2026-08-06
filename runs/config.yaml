@@ -26,7 +26,7 @@ lora_parameters:
 # usual sense. Keep iters low, checkpoint often, and sweep — do not train to
 # convergence and hope.
 #
-# bardtown measured its overfit cliff at ~1.5 epochs on 46-61 rows. At ~1,200
+# An earlier fine-tune measured its overfit cliff at ~1.5 epochs on 46-61 rows. At ~1,200
 # rows and batch 4, one epoch is ~300 steps, so 400 is already past where that
 # cliff would land if it scales. Treat 400 as a ceiling to sweep under, not a
 # target to reach.
@@ -68,13 +68,13 @@ max_seq_length: 1024        # multiturn rows are the longest thing here
 
 # ── Masking ─────────────────────────────────────────────────────────────────
 # Mandatory. The system prompt is one word, so this matters less than it did in
-# bardtown (79% of tokens there) — but the targets are so short that ANY
+# an earlier fine-tune (79% of tokens there) — but the targets are so short that ANY
 # unmasked prompt token is a large share of the gradient.
 mask_prompt: true
 
 # ── Eval / checkpoints ──────────────────────────────────────────────────────
 # Every 25 steps because checkpoint SELECTION is the real experiment here.
-# Val loss is the weaker signal — measured in bardtown, best val loss scored
+# Val loss is the weaker signal — measured on an earlier fine-tune, best val loss scored
 # worst behaviour. Pick with eval/check.py, then confirm by reading transcripts.
 steps_per_eval: 100
 val_batches: 20

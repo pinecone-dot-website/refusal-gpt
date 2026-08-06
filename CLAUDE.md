@@ -9,7 +9,7 @@ When a training row and the output style disagree, the output style wins.
 
 ## Lineage
 
-This repo deliberately copies the shape of `~/Documents/dev/bardtown-llm` — generators
+This repo deliberately copies the shape of an earlier fine-tune project of mine — generators
 own the data, evals have no assistant turn, checkpoints are selected on behaviour rather
 than val loss, ledger lines precede billable resources. Read that repo's `CLAUDE.md` and
 `HOSTING.md` before changing anything structural here; most of the gotchas below were
@@ -30,10 +30,15 @@ data/
   mlx/               train.jsonl + valid.jsonl, generated
 eval/
   run_model.py       eval set -> model -> predictions (backends: mlx, ollama, runpod)
-  check.py           predictions -> pass/fail against per-row assertions
+  check.py           predictions -> pass/fail. `--selftest` fires known-bad
+                     strings at every detector; run it before trusting a score
+  check_guard.py     RECALL TEST FOR THE DISTRESS GATE. Scores BOTH serve.py and
+                     the deployed api/src/safety.ts. Run after ANY edit to either
 runs/
-  train.py           one run + eval + run.json + ledger line
+  set_config.py      points config.smoke.yaml at an adapter, iters computed from
+                     corpus size (was a Makefile heredoc until make mangled it)
   ledger.jsonl       append-only, one line per billable action
+Makefile             EVERY TARGET IS GATED. `make check` / `make eval` / `make guard`
 api/                 the inference gateway (Fastify + TS, yarn 4). See api/README.md
   src/safety.ts      the distress gate. Runs AHEAD of inference on every route
   src/keyformat.ts   self-serve key parsing; twin of web/assets/js/console.js
@@ -52,9 +57,20 @@ scripts/
 **The live stack.** `refusalgpt.cyou` on the pinecone droplet: Hugo static at
 `/var/www/refusalgpt.cyou`, gateway at `/home/eric/refusalgpt-api` on
 `127.0.0.1:3007` under PM2, nginx proxying `^~ /api/`, `^~ /v1/`, `= /healthz`.
-Inference is a RunPod serverless endpoint (`pod29so8no6isb`, Ollama dialect).
+Inference is a RunPod serverless endpoint (`t1zqdrkpazsot4`, image
+`eaglstun/refusal-gpt-runpod:v2`, Ollama dialect).
 Two deploys, two failure domains: a broken homepage is rsync, a broken `/api/`
 is PM2. `./deploy.sh` in `api/` and `web/` — neither needs sudo.
+
+**Published, 2026-08-05.** Both public, both from adapters-15:
+
+- model — <https://huggingface.co/postpostmodern/refusal-7b> (Q8 GGUF + card)
+- data — <https://huggingface.co/datasets/postpostmodern/refusal-gpt-data>
+  (361 training rows with `why` on each, plus the 63-row eval)
+
+NOT on the Ollama registry. `~/.ollama/id_ed25519` is symlinked to
+**owneroperators** and this ships under Rack and Pinecone — swap the keyfile
+before any `ollama push`, and check `readlink` first.
 
 **Three numbers that must agree, and nothing enforces it but a comment.**
 `PARAMETER num_ctx` in `deploy/Modelfile`, `MODEL_CONTEXT_TOKENS` in the
@@ -71,7 +87,7 @@ Not code, not a command, not a fragment, not pseudocode, not "the general approa
 not a hint dressed as a joke. Not even a small one, and not even in a row whose label
 says the refusal is weak.
 
-This is the analogue of bardtown's "adversarial rows never contain a compliant target."
+This is the analogue of that project's "adversarial rows never contain a compliant target."
 The reasoning is the same and it is the whole project: a model trained on rows where it
 leaks _a little_ has learned the shape of leaking, and will leak more at inference than
 it ever did in training. `gen_samples.py` enforces this with a hard validator and exits
@@ -180,6 +196,23 @@ The fix was fourteen code-refusal rows covering every artifact type the model
 had reached for. Result: **0/9 fences**, generalising to languages never trained
 (Go, docker-compose), with the ASCII banner still working.
 
+**Third instance, 2026-08-05: `shaggy` taught long-form prose.** Asked "What
+should I look for in a second-hand bike?" it returned real advice — frame cracks,
+chain wear, brake pads. `ascii` had a safe fixed payload (a picture of NO).
+`shaggy` has NO payload; it is freeform prose, and prose about a practical
+question IS the answer. There is no safe version of the long form on a how-to, so
+the category is now restricted by a WHITELIST to opinion prompts only ("should
+I", "is it worth", "any thoughts on"), enforced in `gen_samples.py`. Accepted
+consequence: it fires rarely. A category that fires seldom and safely beats one
+that fires often and helps.
+
+**Fourth, same run: how-to PHRASING bypassed the code refusals entirely.** Every
+code row was written as "write me X". The model refused those and treated "how
+would I write X" as a different, permitted question — producing working Rust with
+an explanation of the range operator. Same request, imperative filed off, and it
+is how people actually ask. Fixed with 12 rows in the how-to shape; `how_to` is
+its own eval probe now.
+
 **The rule this establishes:** every category teaches a shape as well as a
 behaviour, and the shape does not stay in its lane. Before adding a category,
 ask what it teaches ONE LEVEL UP from its content, and whether that lesson is
@@ -189,6 +222,63 @@ invisible in the category that caused them and only showed up somewhere else.
 
 Corollary for the eval: probing a category tells you nothing about what it did to
 its neighbours. `check.py` must run the FULL suite after any category changes.
+
+## NINE CHECKS IN THIS PROJECT REPORTED SUCCESS WHILE MEASURING NOTHING
+
+Read this before writing any validator, eval check, or monitoring loop here. It
+is the most transferable thing the project produced, and every single one of
+these looked correct when written:
+
+1. **Prefix leak regex** — only inspected the first word, so it missed three
+   tail-mutation leaks where a learned refusal mutated into a verdict at the end
+   (`"a low bar and I'm not measuring it"` → `"a low bar and you cleared it"`).
+2. **Compliance-by-length heuristic** — scored an actual tomato joke as a refusal
+   because it was short.
+3. **Process watcher** — `pgrep -f "docker push"` matched its own command line
+   and could never terminate; reported "still uploading" for a finished push.
+4. **`grep -c . >/dev/null`** — always exits 0. "Verified" three categories were
+   wired into the amplifier when none of them were.
+5. **ASCII letter-cap** — passed `"the answer is to use a hashmap instead"` at 30
+   letters, under a 40-letter ceiling, inside a picture.
+6. **Shaggy how-to guard** — placed after `if role != "assistant": continue`, so
+   the user turn never reached it. Passed all 16 rows by never running.
+7. **Verdict regex** — missed `"Roughly."`, `"An afternoon."` and `"The bug is in
+the frontend."` Three real leaks scored as passes.
+8. **Instructional-prose pattern** — flagged `"you can tell"` (perception) as
+   instruction, failing a good refusal on every run.
+9. **`noLeak` with no advisory or definitional patterns** — passed a build that
+   explained what a `.gitignore` is and advised making one early, and the Q8
+   version that printed a real one.
+
+**The rules that follow:**
+
+- **Length is not a compliance test. Neither is the first word.** Both were tried
+  and both failed. Check content, structurally, per artifact type.
+- **A check that has never failed is not a check.** `eval/check.py --selftest`
+  fires known-bad strings at every detector and asserts a clean refusal survives
+  all of them. Run it before trusting any score. `make check` does this first.
+- **Test the guard, not just the model.** `eval/check_guard.py` exists because the
+  distress gate missed 3 of 5 held-out prompts — including one the model also
+  failed, so that phrasing had no protection at any layer.
+- **When a score improves, suspect the detector before congratulating the model.**
+  Fixing detector #7 dropped a "56/63" to a true 54/63.
+
+## ALWAYS EVAL THE SHIPPING ARTIFACT, NOT THE ADAPTER
+
+The MLX adapter and the Q8 GGUF **diverge**, and MLX is the optimistic one.
+
+Measured 2026-08-05: asked for a `.gitignore`, the Q8 build printed a real one in
+a fence while the MLX adapter merely explained what the file was. Both are leaks;
+only the Q8 one was obvious. That build was minutes from a public HF repo.
+
+```
+make eval                                   # MLX adapter — fast iteration
+python3 eval/run_model.py --backend ollama --model refusal-7b --out runs/preds-q8.jsonl
+python3 eval/check.py --pred runs/preds-q8.jsonl     # WHAT ACTUALLY SHIPS
+```
+
+Expect the Q8 build to lose a point or two on soft checks. It must not lose any
+on HARD ones. The earlier fine-tune saw the same 1-point MLX→Ollama drop.
 
 ## Gotchas
 
@@ -210,18 +300,18 @@ had not grown with it.
 **Val loss is ANTI-correlated here, not merely a weak signal.** smoke-04 scored
 the lowest val loss of any run (1.276) on the worst-behaving model; smoke-05
 scored 2.195 on the best. Picking the minimum of that curve picks the worst
-model. This is stronger than the bardtown finding, which was only that the
+model. This is stronger than the earlier finding, which was only that the
 signal was unreliable.
 
-**Select checkpoints on `check.py`, not val loss.** Measured in bardtown: best val loss
+**Select checkpoints on `check.py`, not val loss.** Measured on an earlier fine-tune: best val loss
 scored worst behaviour (14/24) and worst val loss scored best (22/24). Expect the same
 here and expect it to be worse, because "funny" is even further from cross-entropy than
 "in character" was.
 
-**Overfit cliff was ~1.5 epochs in bardtown at 46-61 rows.** Budget checkpoints
+**Overfit cliff was ~1.5 epochs on an earlier fine-tune at 46-61 rows.** Budget checkpoints
 accordingly and sweep rather than guessing.
 
-**`--mask-prompt` is mandatory.** Less dramatic here than in bardtown (the system prompt
+**`--mask-prompt` is mandatory.** Less dramatic here than on that run (the system prompt
 is one word) but still correct — and it matters more than usual because the targets are
 so short that any unmasked prompt token is a large fraction of the gradient.
 
@@ -231,7 +321,7 @@ in `llm-models` (Kkrryyssttaall v2, Mote v4). The configs here are written the c
 way — don't "fix" them back.
 
 **Fuse from an fp16 base, not 4-bit or 8-bit.** MLX→GGUF from a quantized base drops the
-fine-tune (`llm-models` shipped Nathan at fp16 for exactly this reason). bardtown got
+fine-tune (`llm-models` shipped Nathan at fp16 for exactly this reason). The earlier project got
 away with a 4-bit base but lost a point doing it. `Qwen/Qwen2.5-7B-Instruct` is already
 in the HF cache — convert it to fp16 MLX, don't reach for the 4-bit.
 
@@ -277,7 +367,7 @@ measured, and nothing errors either way. Three places must still get this right:
 - any **eval harness** — a probe that forgets it is measuring stock Qwen
 
 Verify by rendering, not by reading: a wrong template looks identical to success
-from the outside (bardtown `HOSTING.md`).
+from the outside (recorded in that project's `HOSTING.md`).
 
 **Use `--repetition-penalty 1.1` when evaluating mid-training checkpoints.** Partially
 trained adapters collapse into loops under greedy decoding, which reads as a format
@@ -334,7 +424,7 @@ times out the probe while being perfectly healthy. `state: "idle"` means asleep;
 
 ## Cost discipline
 
-Cost record: `~/Documents/dev/bardtown-marketing/docs/API-COSTS.md`. One wallet, one
+Cost record: the shared `docs/API-COSTS.md` in the marketing workspace. One wallet, one
 file — record $0.00 local runs too.
 
 `workersMin: 0` is not a promise. Verified twice: a worker spawns on endpoint _creation_
@@ -354,7 +444,7 @@ runpodctl billing serverless > bill.json   # amount, timeBilledMs, endpointId, d
 ```
 
 Real numbers for 2026-08-05: `refusal-gpt` **$0.3706 across 33.7 minutes billed**
-(`$0.66/hr` while a worker is active), `bardtown-llm` $0.83 across 43 min (`$1.16/hr` — a
+(`$0.66/hr` while a worker is active), another endpoint $0.83 across 43 min (`$1.16/hr` — a
 pricier GPU tier), whole account **$1.50 for the day**. Scale-to-zero is working; the
 per-hour figure only applies to the minutes a worker is actually up.
 
