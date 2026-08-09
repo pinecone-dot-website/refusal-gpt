@@ -1,0 +1,112 @@
+{{ define "head" }}
+{{- /* Same reasoning as the console: this is an application, not a document.
+       Nothing here to index and nothing to unfurl — the homepage demo is the
+       thing that should show up in a link card. */ -}}
+<meta name="description" content="{{ .Description }}">
+<meta name="robots" content="noindex, follow">
+{{ end }}
+
+{{- /* The app owns the viewport and the scroll. See baseof.html. */ -}}
+{{ define "bodyclass" }}app{{ end }}
+
+{{- /* Suppresses the site footer. The `{{ "" }}` is not noise and must stay:
+       Go's text/template will NOT let a definition whose body is only
+       whitespace or comments replace an existing one, so the obvious
+       `{{ define "footer" }}{{ end }}` parses fine, raises nothing, and leaves
+       baseof's default footer rendering exactly as before. An action makes the
+       body non-empty; it emits nothing. Verified by grepping the build for
+       <footer>, because the wrong version looks identical from the source. */ -}}
+{{ define "footer" }}{{ "" }}{{ end }}
+
+{{ define "main" }}
+{{- $x := hugo.Data.chat -}}
+{{- /* The credits meter is the console's meter. Same localStorage key, same
+       ceiling, same message when it fills — so it reads the console's data
+       rather than restating it. Change the number in one place. */ -}}
+{{- $credits := hugo.Data.console.plan.credits -}}
+<main class="cx" id="cx">
+
+  {{- /* ── history drawer ─────────────────────────────────────────────── */ -}}
+  <aside class="cx-drawer" id="cx-drawer" aria-label="{{ $x.drawer.heading }}">
+    <div class="cx-drawer-head">
+      <span class="cx-drawer-title">{{ $x.drawer.heading }}</span>
+      <button class="btn btn-ghost cx-new" id="cx-new">{{ $x.drawer.new }}</button>
+    </div>
+
+    <ul class="cx-list" id="cx-list">
+      <li class="cx-list-empty" id="cx-list-empty">{{ $x.drawer.empty }}</li>
+    </ul>
+
+    {{- /* The console's plan meter, in the sidebar where a real product puts
+           the usage a chat window is spending. */ -}}
+    <div class="cx-drawer-foot">
+      <div class="meter-row">
+        <span>{{ $credits.label }}</span>
+        <span class="meter-n">
+          <span id="cx-credits-used">{{ $credits.used }}</span> /
+          {{ $credits.total }}
+        </span>
+      </div>
+      <div class="meter" id="cx-meter" role="img"
+           aria-label="{{ $credits.used }} of {{ $credits.total }} credits used">
+        <span id="cx-meter-fill" style="width:0%"></span>
+      </div>
+      <p class="cx-note" id="cx-note">{{ $x.drawer.note }}</p>
+    </div>
+  </aside>
+
+  {{- /* Only ever visible on a narrow screen, where the drawer floats over the
+         log instead of sitting beside it. */ -}}
+  <div class="cx-scrim" id="cx-scrim" hidden></div>
+
+  {{- /* ── the conversation ────────────────────────────────────────────── */ -}}
+  <section class="cx-main">
+    <header class="cx-bar">
+      <button class="cx-toggle" id="cx-toggle" aria-controls="cx-drawer"
+              aria-expanded="true" aria-label="{{ $x.drawer.heading }}">
+        <span class="cx-burger" aria-hidden="true"></span>
+      </button>
+      <span class="cx-head-title" id="cx-head-title">{{ $x.drawer.untitled }}</span>
+      <span class="cx-ver">{{ site.Params.region }}</span>
+    </header>
+
+    <div class="cx-log" id="cx-log" role="log" aria-live="polite">
+      <p class="cx-empty" id="cx-empty">{{ $x.log.empty }}</p>
+    </div>
+
+    <div class="cx-foot">
+      {{- /* Appears when the meter fills. Same sentence as the console's plan
+             panel, from the same data. */ -}}
+      <p class="exhausted" id="cx-exhausted" hidden role="alert">
+        {{ $credits.exhausted }}
+      </p>
+
+      <form class="cx-composer" id="cx-composer">
+        <label class="sr-only" for="cx-msg">{{ $x.composer.placeholder }}</label>
+        <textarea id="cx-msg" rows="1" autocomplete="off"
+                  placeholder="{{ $x.composer.placeholder }}"></textarea>
+        <button class="btn btn-primary" id="cx-send" type="submit">{{ $x.composer.send }}</button>
+      </form>
+      <p class="cx-hint">{{ $x.composer.hint }}</p>
+    </div>
+  </section>
+</main>
+
+{{- /* `offline` reuses the demo's lines rather than copying them. They already
+       carry the constraint that matters — none of them is a training row — and
+       a second list would have to be checked against seeds.py all over again. */ -}}
+<script type="application/json" id="chat-config">
+  {{- dict
+        "apiBase"      site.Params.apiBase
+        "creditsTotal" $credits.total
+        "copy"         $x
+        "offline"      hugo.Data.demo.offline
+      | jsonify | safeJS -}}
+</script>
+{{ end }}
+
+{{ define "scripts" }}
+{{ with resources.Get "js/chat.js" | minify | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
+{{ end }}
+{{ end }}

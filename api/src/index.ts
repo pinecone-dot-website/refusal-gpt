@@ -95,10 +95,32 @@ function canned(): string {
  * swallowed. It is not serving a request, it is turning a light on.
  */
 let warming = false;
-function warmUpInBackground(log: { info: (o: object, m: string) => void }): void {
-  if (warming || isWarm() || !config.inference.configured) return;
+/**
+ * When a warm-up was last STARTED — not last succeeded.
+ *
+ * `isWarm()` and `warming` are both success-shaped guards, which is fine while
+ * the endpoint works and useless the moment it does not: a warm-up that fails
+ * leaves warmth false and the in-flight flag clear, so the very next caller
+ * starts another. See WARM_COOLDOWN_MS. This is the only guard that holds when
+ * everything else is broken, which is exactly when it matters.
+ */
+let lastWarmAttemptAt = 0;
+
+/** Why a warm-up was or was not started. The route reports this verbatim. */
+export type WarmOutcome = "warm" | "warming" | "cooling" | "not_configured";
+
+function warmUpInBackground(
+  log: { info: (o: object, m: string) => void },
+  now = Date.now(),
+): WarmOutcome {
+  if (!config.inference.configured) return "not_configured";
+  if (isWarm(now)) return "warm";
+  if (warming) return "warming";
+  if (now - lastWarmAttemptAt < config.inference.warmCooldownMs) return "cooling";
+
   warming = true;
-  const started = Date.now();
+  lastWarmAttemptAt = now;
+  const started = now;
   void chat([{ role: "system", content: REFUSAL_SYSTEM }, { role: "user", content: "hi" }], {
     maxTokens: 4, // enough to prove the worker answers; no more
   })
@@ -109,6 +131,7 @@ function warmUpInBackground(log: { info: (o: object, m: string) => void }): void
     .finally(() => {
       warming = false;
     });
+  return "warming";
 }
 
 // ── CORS, for development only ───────────────────────────────────────────────
@@ -132,6 +155,18 @@ app.addHook("onRequest", async (req, reply) => {
   const path = req.url.split("?")[0] ?? "";
 
   if (path === "/healthz" || path === "/") return;
+
+  // Warm-up is exempt from the demo bucket, deliberately.
+  //
+  // It is fired by page load, not by a person, so charging it to the visitor's
+  // per-minute allowance would spend their first chat on a request they never
+  // made — the ping meant to improve the demo would be the thing rationing it.
+  //
+  // Leaving it unmetered is safe because /api/warm is not where the money is:
+  // its own cooldown decides whether a GPU boot happens at all, and a flood of
+  // requests inside that window costs one boolean check each. Rate-limiting the
+  // cheap call while the expensive one is guarded elsewhere would be theatre.
+  if (path === "/api/warm") return;
 
   // The public demo: no key, bucketed by IP.
   if (path.startsWith("/api/")) {
@@ -428,6 +463,52 @@ function sendStream(reply: import("fastify").FastifyReply, frames: string[]) {
     .header("x-accel-buffering", "no")
     .send(frames.join(""));
 }
+
+// ── warm-up, triggered by the page itself ────────────────────────────────────
+/**
+ * Start a GPU worker because someone opened the site, not because they typed.
+ *
+ * The endpoint runs at workersMin=0, so the first visitor after a lull pays a
+ * 1-3 minute cold start. `/api/chat` already hides that by answering from the
+ * canned pool and warming behind the response — but a fallback line is not the
+ * model, and the visitor who triggered it never sees the real thing. Warming on
+ * page load spends that boot during the seconds someone reads the headline, so
+ * the first thing they type has a decent chance of reaching the GPU.
+ *
+ * **This route costs money and is unauthenticated by design**, so read the
+ * guards as the actual feature:
+ *
+ *   already warm      -> no upstream call at all
+ *   already warming   -> joins the one in flight rather than starting a second
+ *   inside cooldown   -> refused, so a crawler cannot page-load us into a loop
+ *
+ * All three collapse concurrent visitors onto a single boot. What it cannot do
+ * is distinguish a person from a bot: every uncached hit on the homepage is a
+ * candidate warm, and WARM_COOLDOWN_MS is the only thing bounding that. The
+ * ceiling is roughly one boot per cooldown window, and each boot holds a worker
+ * for the endpoint's 300s idleTimeout whether anyone types or not.
+ *
+ * Never 5xx and never blocks: the browser gets an immediate verdict and the
+ * spin-up continues without it, same doctrine as the demo route.
+ */
+async function warmHandler(
+  req: { log: typeof app.log },
+  reply: import("fastify").FastifyReply,
+) {
+  const state = warmUpInBackground(req.log);
+  if (state === "warming") req.log.info({ state }, "warm-up requested by page load");
+  return reply.header("x-refusal-warm", state).send({
+    ok: true,
+    state,
+    // What the gateway believed BEFORE this call — lets the page tell "already
+    // hot" from "you just started the kettle" without a second request.
+    warm: isWarm(),
+    cooldownMs: config.inference.warmCooldownMs,
+  });
+}
+app.post("/api/warm", async (req, reply) => warmHandler(req, reply));
+// GET too, purely so an operator can poke it with curl. Same guards apply.
+app.get("/api/warm", async (req, reply) => warmHandler(req, reply));
 
 // ── the landing page's demo ──────────────────────────────────────────────────
 /**

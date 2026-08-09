@@ -23,13 +23,18 @@
 <link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}">
 {{ end }}
 </head>
-<body>
+{{- /* A body class, and a footer that a page can decline. Both exist for /chat/,
+       which is an application filling the viewport rather than a document: it
+       owns the scroll, and a marketing footer below a chat log is furniture
+       nobody can reach. Every other page renders exactly as before — an
+       unoverridden block is its own default. */ -}}
+<body class="{{ block "bodyclass" . }}{{ end }}">
 
 {{ partial "nav.html" . }}
 
 {{ block "main" . }}{{ end }}
 
-{{ partial "footer.html" . }}
+{{ block "footer" . }}{{ partial "footer.html" . }}{{ end }}
 
 {{ with resources.Get "js/app.js" | minify | fingerprint }}
 <script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>

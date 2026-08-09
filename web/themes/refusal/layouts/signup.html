@@ -1,0 +1,215 @@
+{{ define "head" }}
+{{- /* A checkout has nothing to unfurl and no business being indexed. Same
+       reasoning as /console/ — it is chrome around a button that says no. */ -}}
+<meta name="description" content="{{ .Description }}">
+<meta name="robots" content="noindex, nofollow">
+{{ end }}
+
+{{ define "main" }}
+{{- $s := hugo.Data.signup -}}
+<main id="top">
+  <section class="sec wrap signup">
+
+    <div class="sec-head su-head">
+      <p class="eyebrow">{{ $s.eyebrow }}</p>
+      <h2>{{ $s.heading }}</h2>
+      <p class="lede">{{ $s.lede }}</p>
+    </div>
+
+    {{- /*
+      THERE IS NO <form> ON THIS PAGE, AND THAT IS THE FEATURE.
+
+      A <form> is what makes a browser treat a group of inputs as a payment
+      form: it is the unit Chrome and Safari scan to decide whether to offer a
+      saved card, and the unit that submits. Without one there is nothing to
+      autofill into and nothing to POST — not "submission is prevented", but no
+      submission mechanism present at all.
+
+      Reinforced three ways below, because `autocomplete="off"` alone is a
+      request browsers are free to ignore and routinely do:
+        * no `name` attributes    — an unnamed input is not form data
+        * no `cc-*` autocomplete  — cc-number / cc-exp / cc-csc are the exact
+                                    tokens that summon the card autofill UI.
+                                    They appear nowhere on this page.
+        * type="text" + inputmode — a numeric keypad without the payment
+                                    semantics that trigger card heuristics
+    */ -}}
+    <div class="su-grid">
+
+      {{- /* ── left: the fields ──────────────────────────────────────────── */ -}}
+      <div class="su-main">
+
+        {{- /* account ------------------------------------------------------ */ -}}
+        <section class="panel">
+          <div class="panel-head"><h3>{{ $s.account.title }}</h3></div>
+          <p class="panel-note">{{ $s.account.note }}</p>
+          <div class="fields">
+            <label class="f f-wide">
+              <span>{{ $s.account.email.label }}</span>
+              <input type="text" id="su-email" inputmode="email"
+                     autocomplete="off" autocorrect="off" spellcheck="false"
+                     placeholder="{{ $s.account.email.placeholder }}">
+            </label>
+            <label class="f">
+              <span>{{ $s.account.company.label }}</span>
+              <input type="text" id="su-company" autocomplete="off"
+                     placeholder="{{ $s.account.company.placeholder }}">
+            </label>
+            <label class="f">
+              <span>{{ $s.account.size.label }}</span>
+              <select id="su-size" autocomplete="off">
+                {{- range $s.account.size.options }}
+                <option>{{ . }}</option>
+                {{- end }}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        {{- /* payment ------------------------------------------------------ */ -}}
+        <section class="panel su-pay">
+          <div class="panel-head">
+            <h3>{{ $s.payment.title }}</h3>
+            <span class="pill su-lock">{{ $s.security.title }}</span>
+          </div>
+          <p class="panel-note">{{ $s.payment.note }}</p>
+
+          <div class="fields">
+            <label class="f f-wide">
+              <span>{{ $s.payment.card.label }}</span>
+              {{- /* maxlength 13 = 11 digits + 2 formatting spaces. Eleven is
+                     one short of the shortest card number that exists, so a
+                     valid PAN does not fit. This attribute is the FIRST of
+                     three defences and the only removable one. */ -}}
+              <input type="text" id="su-card" inputmode="numeric" maxlength="13"
+                     autocomplete="off" autocorrect="off" spellcheck="false"
+                     aria-describedby="su-card-note"
+                     placeholder="{{ $s.payment.card.placeholder }}">
+              <span class="f-note" id="su-card-note">{{ $s.payment.card.note }}</span>
+            </label>
+            <label class="f">
+              <span>{{ $s.payment.expiry.label }}</span>
+              <input type="text" id="su-exp" inputmode="numeric" maxlength="7"
+                     autocomplete="off" placeholder="{{ $s.payment.expiry.placeholder }}">
+            </label>
+            <label class="f">
+              <span>{{ $s.payment.cvc.label }}</span>
+              <input type="text" id="su-cvc" inputmode="numeric" maxlength="3"
+                     autocomplete="off" placeholder="{{ $s.payment.cvc.placeholder }}">
+            </label>
+            <label class="f">
+              <span>{{ $s.payment.postcode.label }}</span>
+              <input type="text" id="su-zip" maxlength="10" autocomplete="off"
+                     placeholder="{{ $s.payment.postcode.placeholder }}">
+            </label>
+            <label class="f">
+              <span>{{ $s.payment.country.label }}</span>
+              <select id="su-country" autocomplete="off">
+                {{- range $s.payment.country.options }}
+                <option>{{ . }}</option>
+                {{- end }}
+              </select>
+            </label>
+          </div>
+
+          <p class="su-secure">{{ $s.security.body }}</p>
+        </section>
+
+        {{- /* terms + the button ------------------------------------------- */ -}}
+        <section class="panel su-final">
+          <label class="su-terms">
+            <input type="checkbox" id="su-terms" autocomplete="off">
+            <span>{{ $s.terms.label }}</span>
+          </label>
+
+          {{- /* type="button". Not a submit button, because there is nothing
+                 to submit it to. */ -}}
+          <button type="button" class="btn btn-primary btn-lg su-submit" id="su-submit"
+                  data-label="{{ $s.terms.submit }}"
+                  data-working="{{ $s.terms.working }}">{{ $s.terms.submit }}</button>
+
+          {{- /* Populated by signup.js. role=alert so the refusal is announced
+                 rather than only seen. */ -}}
+          <div class="su-error" id="su-error" role="alert" hidden>
+            <strong id="su-error-title"></strong>
+            <span id="su-error-body"></span>
+          </div>
+
+          {{- /* The refusal copy, kept in data/signup.yaml like every other word
+                 on this site rather than baked into the script.
+
+                 safeJS is REQUIRED, not decoration. Inside a <script> element
+                 Hugo applies JS-context escaping, which JSON-encodes the
+                 already-JSON string and yields "{\"declined\":…}" — a JSON
+                 STRING containing JSON. JSON.parse then returns a string,
+                 every lookup on it is undefined, and the click handler throws
+                 before it can render anything. The page looked perfect and the
+                 button did nothing at all. Caught by driving the built asset;
+                 it is invisible in the template and invisible on inspection. */ -}}
+          <script type="application/json" id="su-errors">{{ $s.errors | jsonify | safeJS }}</script>
+
+          <p class="su-legal">{{ $s.terms.legal.note }}</p>
+        </section>
+      </div>
+
+      {{- /* ── right: order summary ──────────────────────────────────────── */ -}}
+      <aside class="panel su-summary">
+        <div class="panel-head">
+          <h3>{{ $s.summary.title }}</h3>
+        </div>
+
+        <div class="su-plan">
+          <div>
+            <span class="su-plan-name">{{ $s.summary.plan }}</span>
+            <span class="pill su-pop">{{ $s.summary.badge }}</span>
+          </div>
+          <div class="su-plan-price">
+            {{ $s.summary.currency }}{{ $s.summary.seat_price }}<small> /seat /mo</small>
+          </div>
+        </div>
+
+        <label class="f su-seats">
+          <span>{{ $s.summary.seats.label }}</span>
+          <input type="text" id="su-seats" inputmode="numeric" maxlength="3"
+                 autocomplete="off" value="{{ $s.summary.seats.value }}"
+                 data-min="{{ $s.summary.seats.min }}" data-max="{{ $s.summary.seats.max }}">
+          <span class="f-note">{{ $s.summary.seats.note }}</span>
+        </label>
+
+        {{- /* Real arithmetic, updated live. The numbers are correct; it is the
+               transaction that is not going to happen. */ -}}
+        <dl class="kv su-lines" data-seat-price="{{ $s.summary.seat_price }}"
+            data-currency="{{ $s.summary.currency }}">
+          <dt>{{ $s.summary.lines.subtotal }}</dt><dd id="su-subtotal">—</dd>
+          <dt>{{ $s.summary.lines.discount }}</dt><dd id="su-discount">—</dd>
+          <dt>{{ $s.summary.lines.tax }}</dt><dd id="su-tax">—</dd>
+        </dl>
+
+        <div class="su-total">
+          <span>{{ $s.summary.lines.total }}</span>
+          <strong id="su-total">—</strong>
+        </div>
+        <div class="su-due">{{ $s.summary.trial }}</div>
+
+        <p class="su-foot">{{ $s.summary.footnote }}</p>
+
+        <div class="su-includes">
+          <div class="su-includes-t">{{ $s.summary.includes_title }}</div>
+          <ul>
+            {{- range $s.summary.includes }}
+            <li>{{ . | safeHTML }}</li>
+            {{- end }}
+          </ul>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+</main>
+{{ end }}
+
+{{ define "scripts" }}
+{{ with resources.Get "js/signup.js" | minify | fingerprint }}
+<script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
+{{ end }}
+{{ end }}

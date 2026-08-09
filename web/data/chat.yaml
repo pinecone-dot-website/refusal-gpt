@@ -1,0 +1,50 @@
+# The chat app page.
+#
+# Copy only. The credits meter deliberately reads console.yaml's plan.credits
+# instead of restating the numbers here — it is the SAME meter (one localStorage
+# key, one ceiling, one exhausted message), and two copies of a number in two
+# data files is how they end up disagreeing.
+
+title: "Chat"
+description: "A full conversation with a model that will not have one."
+
+drawer:
+  heading: "History"
+  new: "New chat"
+  empty: "No conversations yet."
+  untitled: "New conversation"
+  # Two-step delete rather than a confirm() dialog — a modal for a joke site's
+  # chat history is a bigger interruption than the action deserves.
+  delete: "Delete"
+  deleteConfirm: "Sure?"
+  # Shown under the meter. States the policy plainly: this is the one part of
+  # the page that is not in character, because a person who loses a transcript
+  # should know why.
+  note: >-
+    Conversations are held in this browser only. There is no account and nothing
+    is stored on the server. Clearing site data ends them; so does Safari, on
+    its own, after seven days without a visit.
+  # Replaces the note if the browser refuses to persist anything at all.
+  noStore: >-
+    This browser is not letting the page store anything. The conversation works;
+    it will not survive a reload.
+
+roles:
+  user: "You"
+  bot: "RefusalGPT"
+
+log:
+  # The empty state for a fresh conversation. Not a greeting — it has not been
+  # asked anything yet, and the product does not open the conversation.
+  empty: "Ask it to do something."
+  # Prepended to the reply when the API could not be reached at all and the page
+  # answered from its own list. Kept visible: a fallback that hides itself is
+  # indistinguishable from the model, which is the failure this repo counts.
+  offlineNote: "offline"
+
+composer:
+  placeholder: "Ask it to do something…"
+  send: "Send"
+  sending: "Sending…"
+  spent: "No credits"
+  hint: "Enter to send · Shift+Enter for a new line"

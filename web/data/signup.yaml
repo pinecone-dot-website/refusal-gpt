@@ -1,0 +1,126 @@
+# Copy for /signup/ — the Team plan checkout that cannot be completed.
+#
+# The page is played straight, like the rest of the site. The joke is structural:
+# it is a complete, plausible, professional checkout, and the button at the end
+# of it declines. Nothing here winks.
+#
+# Two lines below are literally true and doing real work — `security.body` and
+# `legal.note`. A page shaped like a payment form should not have to be
+# *inferred* to be inert, so the fine print says so plainly. It reads as the
+# trust boilerplate every SaaS checkout carries, which is exactly why it fits.
+
+eyebrow: "Team plan"
+heading: "Start your free trial."
+lede: "Fourteen days of full access. No commitment, no setup fee, and no outcome."
+
+# ── order summary ───────────────────────────────────────────────────────────
+summary:
+  title: "Order summary"
+  plan: "Team"
+  badge: "Most popular"
+  seat_price: 49
+  currency: "$"
+  seats:
+    label: "Seats"
+    value: 5
+    min: 1
+    max: 500
+    note: "Add or remove seats at any time. Removal is processed immediately."
+  lines:
+    subtotal: "Subtotal"
+    discount: "Annual discount (20%)"
+    tax: "Estimated tax"
+    total: "Total after trial"
+  trial: "$0.00 due today"
+  footnote: "Billed monthly after your 14-day trial. Cancel before renewal and you will not be charged, which is also true if you do not."
+  includes_title: "Included in Team"
+  includes:
+    - "Unlimited refusals"
+    - "SSO &amp; SCIM provisioning"
+    - "Denial analytics dashboard"
+    - "Priority queue for being told no"
+    - "99.9% uptime commitment"
+
+# ── account ─────────────────────────────────────────────────────────────────
+account:
+  title: "Account details"
+  note: "We use this to identify the account we will not be creating."
+  email:
+    label: "Work email"
+    placeholder: "you@company.com"
+  company:
+    label: "Company"
+    placeholder: "Acme Inc."
+  size:
+    label: "Team size"
+    options:
+      - "1–10"
+      - "11–50"
+      - "51–200"
+      - "201–1,000"
+      - "1,000+"
+
+# ── payment ─────────────────────────────────────────────────────────────────
+payment:
+  title: "Payment method"
+  note: "Required to start your trial. You will not be charged today."
+  card:
+    label: "Card number"
+    # 11 digits. The shortest card number in real circulation is 12 (Maestro),
+    # and ISO/IEC 7812 does not go below that for payment cards. Capping here
+    # means the field cannot physically hold a valid number — it is a shape,
+    # not a container. See MAX_PAN_DIGITS in signup.js, which enforces the same
+    # number from JS so the attribute is not the only thing holding the line.
+    placeholder: "1234 5678 901"
+    note: "Your card is not charged during the trial period."
+  expiry:
+    label: "Expiry"
+    placeholder: "MM / YY"
+  cvc:
+    label: "CVC"
+    placeholder: "123"
+  postcode:
+    label: "Billing postcode"
+    placeholder: "83702"
+  country:
+    label: "Country"
+    options:
+      - "United States"
+      - "United Kingdom"
+      - "Canada"
+      - "Australia"
+      - "Germany"
+      - "Ireland"
+      - "New Zealand"
+
+security:
+  title: "Secure checkout"
+  # True. There is no form element, no endpoint, and no request. Saying so in
+  # the trust slot is both the honest disclosure and the better joke.
+  body: "Card details are never transmitted, stored, or charged. There is no payment processor attached to this page."
+
+terms:
+  label: "I agree to the Terms of Service and acknowledge the Refusal Policy."
+  submit: "Start free trial"
+  working: "Authorising…"
+  legal:
+    note: "This is a demonstration checkout for RefusalGPT, a parody product by Rack and Pinecone. No payment is collected and no subscription is created."
+
+# ── what the button says instead of working ─────────────────────────────────
+# `declined` is the ordinary path: everything valid, button still refuses,
+# because that is the product. `tampered` fires when the card field holds more
+# digits than the markup allows — which can only happen if someone edited the
+# page. It is the one place the site is allowed to notice you.
+errors:
+  declined:
+    title: "Declined."
+    body: "Not by your bank."
+  incomplete:
+    title: "Incomplete."
+    body: "Two fields short of a refusal, which you were getting anyway."
+  terms:
+    title: "Terms not accepted."
+    body: "Neither are you."
+  tampered:
+    title: "That number is too long for that field."
+    body: "You changed the page to get here. The answer at the end of it is the same one it was going to be."

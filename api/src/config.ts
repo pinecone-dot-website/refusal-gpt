@@ -122,6 +122,23 @@ const Env = z.object({
    * make them wait for the timeout to prove it.
    */
   WARM_WINDOW_MS: z.coerce.number().int().positive().default(240_000),
+
+  /**
+   * Floor on how often a warm-up may be STARTED, successful or not.
+   *
+   * WARM_WINDOW_MS and the in-flight flag both key off success: `isWarm()` is
+   * false until a call returns, and `warming` clears the moment one fails. So
+   * against an endpoint that is down, misconfigured, or simply slower to boot
+   * than UPSTREAM_TIMEOUT_MS, neither guard holds and every arriving visitor
+   * starts another spin-up. That is a GPU-shaped retry loop driven by page
+   * loads, and /api/warm hands the trigger to anyone with a browser.
+   *
+   * A failed warm-up is not free: RunPod bills the boot, and the worker it
+   * started sits out its 300s idleTimeout regardless of whether our request
+   * survived long enough to see it. 90s is comfortably longer than a warm boot
+   * and short enough that a real visitor arriving after a lull still gets one.
+   */
+  WARM_COOLDOWN_MS: z.coerce.number().int().positive().default(90_000),
   LOG_LEVEL: z.string().default("info"),
 
   /**
@@ -197,6 +214,7 @@ export const config = {
     timeoutMs: env.UPSTREAM_TIMEOUT_MS,
     demoTimeoutMs: env.DEMO_TIMEOUT_MS,
     warmWindowMs: env.WARM_WINDOW_MS,
+    warmCooldownMs: env.WARM_COOLDOWN_MS,
     /** False until RunPod exists. Routes degrade instead of hanging. */
     configured: env.INFERENCE_URL !== "",
   },

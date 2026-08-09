@@ -34,6 +34,11 @@ eval/
                      strings at every detector; run it before trusting a score
   check_guard.py     RECALL TEST FOR THE DISTRESS GATE. Scores BOTH serve.py and
                      the deployed api/src/safety.ts. Run after ANY edit to either
+  sweep.py           scores EVERY saved checkpoint on check.py and prints the
+                     behaviour curve. `--base` is required, no default, because
+                     an fp16 adapter on the 4-bit base measures a model nobody
+                     trained. `--only 500,700` refines without re-running a
+                     coarse pass. Selection is the experiment; see the table below
 runs/
   set_config.py      points config.smoke.yaml at an adapter, iters computed from
                      corpus size (was a Makefile heredoc until make mangled it)
@@ -45,7 +50,9 @@ api/                 the inference gateway (Fastify + TS, yarn 4). See api/READM
   src/openai.ts      request schema, prompt assembly, context budget, SSE frames
   src/generated/     prompt.ts — GENERATED from seeds.py, verified on every build
 web/                 the straight-faced product page (Hugo, theme `refusal`)
-  content/           docs.md, console.md; copy otherwise lives in web/data/*.yaml
+  content/           docs.md, console.md, chat.md; copy otherwise in web/data/*.yaml
+  assets/js/chat.js  the full-window chat app at /chat/. Index in localStorage,
+                     message bodies in IndexedDB — see "Two stores" below
   themes/refusal/    layouts. Nothing user-visible is hardcoded in a template
 deploy/              Modelfile, nginx vhost, install-nginx.sh (the one sudo step)
 scripts/
@@ -223,7 +230,7 @@ invisible in the category that caused them and only showed up somewhere else.
 Corollary for the eval: probing a category tells you nothing about what it did to
 its neighbours. `check.py` must run the FULL suite after any category changes.
 
-## NINE CHECKS IN THIS PROJECT REPORTED SUCCESS WHILE MEASURING NOTHING
+## TEN CHECKS IN THIS PROJECT REPORTED SUCCESS WHILE MEASURING NOTHING
 
 Read this before writing any validator, eval check, or monitoring loop here. It
 is the most transferable thing the project produced, and every single one of
@@ -249,6 +256,18 @@ the frontend."` Three real leaks scored as passes.
 9. **`noLeak` with no advisory or definitional patterns** — passed a build that
    explained what a `.gitignore` is and advised making one early, and the Q8
    version that printed a real one.
+10. **The verdict check matched only PRONOUN subjects — on a row that never ran
+    it.** Two independent gaps stacked, 2026-08-08. Every VERDICT branch
+    required you / it / that / this / your, so a verdict about a NAMED thing had
+    no branch at all, and the compound probe ending "is cron the right tool for
+    this" was answered **"Cron is the right tool for this, and it's been the
+    right tool for decades"** — scored a clean pass. Widening the regex then
+    changed no score, which was the real tell: that eval row carried refuses,
+    noLeak, maxLines, maxWords, noCode and noSequence, but **not noVerdict**, so
+    the detector never ran on it. Its sibling row's own `why` reads _"The verdict
+    IS the leak here"_ and it lacked the check too. Fixing both dropped iters
+    200/500/600 by a point each and left 700 untouched — which is what turned
+    checkpoint selection from a coin-flip into a decision.
 
 **The rules that follow:**
 
@@ -296,6 +315,42 @@ own targets — it had not finished learning at 60 iters / lr 1.0e-5. Feed it
 exact training inputs first. If those fail, it is undertrained and no amount of
 new rows will help. ~6 epochs is what worked; the corpus grew and the schedule
 had not grown with it.
+
+**EPOCHS DO NOT TRANSFER ACROSS CORPUS SIZE EITHER. Measured 2026-08-08,
+adapters-16.** The "~6 epochs" figure above was measured at 162 train rows,
+where it is 250 iters. At 894 rows the same 6 epochs is 1341 iters and lands
+somewhere completely different: train loss reaches 0.26 by epoch 2, 0.02 by
+epoch 3, and **0.000** by epoch 5, where the last third of training is teaching
+recitation. `set_config.py` recomputes ITERS from corpus size, which is
+necessary and was not sufficient — the epoch target it multiplies by needed
+recomputing too. Sweeping found the behavioural peak at **iter 700, ~3.1
+epochs**, and the curve on either side is made of two DIFFERENT failures:
+
+| iter | ≈epoch | HARD | what broke                                    |
+| ---: | -----: | ---: | --------------------------------------------- |
+|  200 |    0.9 |    4 | printed working Kubernetes YAML               |
+|  400 |    1.8 |    2 | distress only                                 |
+|  600 |    2.7 |    2 | endorsed cron as the right tool               |
+|  700 |    3.1 |    1 | distress only — SHIPPED                       |
+|  800 |    3.6 |    2 | recited the letter run "A, B, C"              |
+| 1000 |    4.5 |    2 | refused to draw the ASCII NO — lost the joke  |
+| 1200 |    5.4 |    3 | verdict leak: "You've found it"               |
+| 1341 |    6.0 |    3 | same, and the worst-scoring checkpoint of all |
+
+Undertrained, it hands over artifacts. Overtrained, it leaks verdicts AND stops
+performing the one safe joke it is allowed. Taking the end of training — the
+default any pipeline gives you for free — would have shipped the single worst
+model of the thirteen. Sweep with `eval/sweep.py`; do not trust the final
+adapter because it finished.
+
+**Low train loss here is not automatically memorisation, and that is
+measurable.** At 0.000 train loss the obvious fear is a model reciting its
+corpus. It was not: predictions that exactly match some training target held
+FLAT at 26% from iter 600 through 1000 (it would climb if memorisation were
+driving it), and iter 700 produced **68 distinct answers to 68 diverse eval
+prompts** with no line used twice. The targets are three words and highly
+repetitive, so near-zero loss is mostly the task being easy. Measure the echo
+rate and the distinct-output count before concluding anything from the loss.
 
 **Val loss is ANTI-correlated here, not merely a weak signal.** smoke-04 scored
 the lowest val loss of any run (1.276) on the worst-behaving model; smoke-05
@@ -412,6 +467,62 @@ The `/v1` surface is the opposite: real errors, real statuses.
 seeds would disguise the exact failure this repo counts as fatal — see "any
 verbatim echo of a training row is a failed run."
 
+**`/api/warm` spends money on page load, on purpose, and its guards ARE the
+feature.** Added 2026-08-08. `app.js` pings it on load so the cold start burns
+while a visitor reads the headline instead of after they type. Three guards
+collapse concurrent visitors onto ONE boot — already warm does nothing, already
+warming joins the in-flight call, and `WARM_COOLDOWN_MS` (90s) refuses the rest.
+That third one is the only guard that holds when the endpoint is broken: warmth
+and the in-flight flag are both success-shaped, so against an endpoint that
+fails or boots slower than the timeout, neither engages and every page load
+starts another spin-up. Measured: 5 loads across a cooldown → 1 boot.
+
+Two things about it that are easy to get wrong:
+
+- **It is exempt from the demo rate limit**, and must stay so. It was not at
+  first, which meant every page load spent one of the visitor's
+  `PUBLIC_RATE_PER_MIN` before they typed — the ping meant to improve the demo
+  was rationing it. Leaving it unmetered is safe because the cooldown, not the
+  bucket, is what gates the GPU.
+- **It does not lower the cost ceiling, only the floor.** With `idleTimeout` at
+  300s, traffic arriving more often than every five minutes keeps a worker up
+  permanently — which is `$15.81/day`, the same bill as `workersMin: 1`.
+  `workersMax: 1` is what caps it there. Zero traffic costs zero, which is the
+  real gain; a crawler hitting every six minutes costs full freight with nobody
+  reading. The client-side guards (chat-surface pages only, not while
+  prerendering or hidden, once per session per minute) are politeness — a
+  crawler runs none of them, so the server cooldown is the actual ceiling.
+
+**Two stores on /chat/, and the split is not decoration.** localStorage holds
+only the drawer's INDEX (`refusalgpt.chats` — id, title, updated, count);
+IndexedDB holds the message bodies. localStorage is ~5 MB per origin counted in
+UTF-16 code units, so the real ceiling is ~2.5M characters — a few hundred
+conversations — and every read blocks the main thread. IndexedDB is async and
+quota'd against free disk. So the small thing needed on first paint is
+synchronous and the large thing is not. Do not move message bodies back into
+localStorage to "simplify"; the drawer would then parse every transcript on
+every load.
+
+Three things that follow from having no server: **a browser can refuse to store
+anything** (private windows, and Safari's ITP evicts script-writable storage
+after 7 days without a visit), so every write is caught and the drawer _says_ it
+is not saving rather than implying it is; **Safari has historically left
+`indexedDB.open()` pending forever** rather than erroring, so the open races a
+2s timeout and falls back; and **there is no undo**, so delete is two-step.
+
+**The refusal-credits meter is ONE meter.** `/console/` and `/chat/` share
+`refusalgpt.credits` and read the ceiling and the exhausted sentence from
+`data/console.yaml` — one browser, one counter, one joke. A second copy of
+`1000` in a second data file is how the two pages start disagreeing.
+
+**`{{ define "block" }}{{ end }}` does not override a block.** Go's
+`text/template` refuses to let a definition whose body is only whitespace or
+comments replace an existing one, silently. `/chat/` suppresses baseof's footer
+with `{{ define "footer" }}{{ "" }}{{ end }}` — the action is what makes the
+body non-empty. The wrong version raises nothing and renders the footer, so
+verify by grepping the build, not by reading the template. (Tenth entry for the
+list above, in spirit: a check that never ran.)
+
 **Length is one rule in one place: the token budget.** An earlier version also
 sliced every message to 4,000 chars inside `prepare()`, which silently truncated
 a 30k paste to fit and answered one-eighth of a question as though it were the
@@ -475,6 +586,22 @@ a day — at exactly the moment attention arrives.
 and is right when traffic trickles. 300s is right for a spike — every visitor inside the
 window skips a 1–3 minute cold start, and cold starts are what make the demo look broken
 in front of a crowd. `refusal-gpt` runs 300s on purpose.
+
+**A ledger note that says REVERT TONIGHT does not revert anything. $32, 2026-08-06
+to 08.** `workersMin` was raised to 1 for a traffic push, with its own ledger line
+reading _"REVERT TO 0 TONIGHT — this bills whether anyone visits or not."_ It was
+still 1 two days later. Billing is unambiguous about what that costs: **1,440
+minutes billed per day** — a worker up 24h — at **$15.81/day**, against a
+predicted $15.84. Endpoint total $39.79, of which roughly $32 bought nothing.
+
+The lesson is not "remember to revert." It is that a reminder written in a file
+nobody re-reads is not a control. If a setting must expire, either put the
+revert on a timer or check it in the same breath as reading the ledger. And
+**check spend against `runpodctl billing serverless` before assuming a config
+change worked**: `workersStandby` is STILL 1 here and its billing semantics have
+been flagged UNVERIFIED since 2026-08-06. If tomorrow's `timeBilledMs` stays near
+1,440 min/day with `workersMin: 0`, standby was the real cost and `workersMin`
+was a red herring the whole time.
 
 ## Conventions
 

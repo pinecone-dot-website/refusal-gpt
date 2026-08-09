@@ -603,3 +603,95 @@ html:has(body.app){height:100%}
   .doc-grid{grid-template-columns:1fr}
   .toc{order:0;position:static;padding-bottom:22px;border-bottom:1px solid var(--rule)}
 }
+
+/* ── signup ──────────────────────────────────────────────────────────────── */
+/* The Team checkout. Borrows .panel / .fields / .f wholesale from the console
+   so it looks like the same product rather than a page someone bolted on;
+   everything below is only what a checkout needs and the console doesn't. */
+.su-head{max-width:60ch}
+.su-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;
+  gap:clamp(20px,3vw,32px);align-items:start}
+.su-main{display:flex;flex-direction:column;gap:clamp(16px,2vw,20px);min-width:0}
+
+/* The lock pill sits in the payment panel head. Amber rather than green: this
+   site does not own a "success" colour and should not start here. */
+.su-lock{background:var(--amber-wash);color:var(--amber-ink);border-color:transparent}
+.su-secure{margin:16px 0 0;font-size:12.2px;line-height:1.5;color:var(--slate-2);
+  padding-top:14px;border-top:1px solid var(--rule)}
+
+.su-terms{display:flex;gap:10px;align-items:flex-start;font-size:13.6px;
+  line-height:1.5;color:var(--ink);cursor:pointer}
+.su-terms input{margin-top:2px;accent-color:var(--ink);width:15px;height:15px;flex:none}
+.su-final{display:flex;flex-direction:column;gap:16px}
+.su-submit{width:100%}
+.su-legal{margin:0;font-size:11.6px;line-height:1.5;color:var(--slate-2)}
+
+/* The refusal. Deliberately not styled as a system error — no red, no icon.
+   It reads as a decision the page has made, which is what it is. */
+.su-error{border:1px solid var(--amber);background:var(--amber-wash);
+  border-radius:9px;padding:13px 15px;font-size:13.6px;line-height:1.55}
+.su-error strong{display:block;font-family:var(--display);font-size:15px;
+  color:var(--amber-ink);margin-bottom:2px}
+.su-error span{color:var(--ink)}
+
+/* One short shake on refusal. Skipped entirely under reduced-motion — the
+   error text carries the whole message on its own. */
+@keyframes su-shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-5px)}
+  40%{transform:translateX(4px)}
+  60%{transform:translateX(-3px)}
+  80%{transform:translateX(2px)}
+}
+.su-shake .su-final{animation:su-shake .34s ease-in-out}
+@media(prefers-reduced-motion:reduce){.su-shake .su-final{animation:none}}
+
+/* ── order summary ── */
+.su-summary{position:sticky;top:86px}
+.su-plan{display:flex;align-items:baseline;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--rule)}
+.su-plan-name{font-family:var(--display);font-weight:700;font-size:17px}
+.su-pop{margin-left:8px;background:var(--amber-wash);color:var(--amber-ink);
+  border-color:transparent}
+.su-plan-price{font-family:var(--display);font-weight:700;font-size:19px;
+  font-variant-numeric:tabular-nums}
+.su-plan-price small{font-family:var(--body);font-weight:400;font-size:12.4px;
+  color:var(--slate-2)}
+
+.su-seats{margin-top:16px}
+.su-seats input{font-variant-numeric:tabular-nums}
+.su-lines{margin-top:18px;padding-top:16px;border-top:1px solid var(--rule)}
+.su-lines dd{font-variant-numeric:tabular-nums}
+
+.su-total{display:flex;align-items:baseline;justify-content:space-between;
+  gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--rule);
+  font-family:var(--display);font-weight:700;font-size:16px}
+.su-total strong{font-variant-numeric:tabular-nums}
+.su-due{margin-top:6px;text-align:right;font-family:var(--mono);font-size:11.5px;
+  letter-spacing:.06em;color:var(--amber-ink)}
+.su-foot{margin:14px 0 0;font-size:11.8px;line-height:1.5;color:var(--slate-2)}
+
+.su-includes{margin-top:20px;padding-top:16px;border-top:1px solid var(--rule)}
+.su-includes-t{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--slate-2);margin-bottom:10px}
+.su-includes ul{margin:0;padding:0;list-style:none;display:grid;gap:7px;
+  font-size:13.4px;color:var(--ink)}
+.su-includes li{padding-left:19px;position:relative;line-height:1.45}
+.su-includes li::before{content:"";position:absolute;left:0;top:.5em;
+  width:9px;height:2px;background:var(--amber)}
+
+@media(max-width:940px){
+  .su-grid{grid-template-columns:1fr}
+  /* Summary first on a phone: what it costs is the question you have before
+     you start typing a card number you cannot finish. */
+  .su-summary{position:static;order:-1}
+}
+
+/* `.f>span` (uppercase mono, for control LABELS) out-specifies `.f-note`, so
+   notes inherited the label treatment — sentences rendered as shouted mono.
+   The .f-note rule's own comment says it should be quiet and untransformed;
+   this restores that intent. Scoped to .signup rather than fixed globally: the
+   console renders short notes where the uppercase reads fine, and changing a
+   shipped page's appearance is not this page's business. */
+.signup .f>span.f-note{text-transform:none;letter-spacing:0;
+  font-family:var(--body);font-size:11.8px;color:var(--slate-2)}

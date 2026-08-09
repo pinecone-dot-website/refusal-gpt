@@ -5,6 +5,81 @@
  * data/demo.yaml) so this file is a static fingerprinted asset that does not
  * change when the words do.
  */
+/* Warm the GPU while they read the headline.
+ *
+ * The RunPod endpoint runs at workersMin=0, so the first visitor after a quiet
+ * spell waits 1-3 minutes for a worker to boot. /api/chat hides that by
+ * answering from the canned pool — which keeps the page fast but means the
+ * person who triggered the boot is the one person who never meets the model.
+ * Spending the cold start during the seconds someone spends reading is free
+ * from their side and it is the whole point of doing this on load.
+ *
+ * Deliberately narrow about WHEN it fires, because each warm holds a worker for
+ * the endpoint's 300s idleTimeout whether or not anybody types:
+ *
+ *   - only on pages that actually have a chat surface. A visitor reading /docs/
+ *     is not about to send anything, and booting a GPU for them is pure spend.
+ *   - not while prerendering or hidden — a speculative background load is not a
+ *     visit, and Chrome will happily prerender a link nobody clicks.
+ *   - once per session per minute, so navigating between pages is one boot.
+ *
+ * None of these are the real ceiling. The server's WARM_COOLDOWN_MS is, because
+ * anything here can be skipped by a client that simply does not run it — a
+ * crawler, a curl, a stripped browser. This is the polite half of the guard;
+ * the enforcing half is in the gateway.
+ */
+(function () {
+  "use strict";
+
+  // Whichever surface this page has. The absence of all three means the page
+  // has no way to talk to the model, so there is nothing to warm up for.
+  var el =
+    document.getElementById("demo-config") ||
+    document.getElementById("chat-config") ||
+    document.getElementById("console-config");
+  if (!el) return;
+
+  var base;
+  try {
+    base = (JSON.parse(el.textContent).apiBase || "");
+  } catch (e) {
+    return; // malformed config is the page's problem, not a reason to guess a URL
+  }
+
+  // A prerendered page has not been visited yet. Wait until it actually is.
+  if (document.prerendering) {
+    document.addEventListener("prerenderingchange", warm, { once: true });
+    return;
+  }
+  if (document.visibilityState === "hidden") return;
+
+  warm();
+
+  function warm() {
+    // sessionStorage can throw outright in a locked-down browser. A visitor who
+    // has disabled storage should still get a warm worker; they just get one
+    // per page load instead of one per minute, and the server absorbs that.
+    var KEY = "refusalgpt.warmedAt";
+    try {
+      var last = parseInt(sessionStorage.getItem(KEY), 10);
+      if (last && Date.now() - last < 60000) return;
+      sessionStorage.setItem(KEY, String(Date.now()));
+    } catch (e) {
+      /* no storage — fall through and warm anyway */
+    }
+
+    // Fire and forget in both directions: nothing reads the response and a
+    // failure is silent. The page works identically whether this lands or not,
+    // which is the only reason it is safe to run on every load.
+    fetch(base + "/api/warm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+      keepalive: true,
+    }).catch(function () {});
+  }
+})();
+
 (function () {
   "use strict";
 

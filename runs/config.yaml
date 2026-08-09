@@ -11,7 +11,7 @@
 model: "./models/qwen2.5-7b-instruct-fp16"
 train: true
 data: "./data/mlx"
-adapter_path: "./runs/adapters"
+adapter_path: "./runs/adapters-16"
 
 # ── LoRA ────────────────────────────────────────────────────────────────────
 num_layers: 16
@@ -48,8 +48,23 @@ lora_parameters:
 # machine. Neither failure announces itself: one produces a model that hasn't
 # learned, the other produces one that has learned too well, and the loss curve
 # is anti-correlated so it won't tell you which. Recompute, don't inherit.
+#
+# ⚠️ AND THE EPOCH TARGET ITSELF DOES NOT TRANSFER. Measured 2026-08-08 on
+# adapters-16, 894 train rows. The "~6 epochs" above came from a 162-row corpus
+# where it is 250 iters. At 894 rows it is 1341 iters and behaves nothing like
+# it: train loss 0.26 by epoch 2, 0.02 by epoch 3, 0.000 by epoch 5. Sweeping
+# all 13 checkpoints put the BEHAVIOURAL peak at iter 700 — about 3.1 epochs —
+# with distinct failures on each side (iter 200 printed working Kubernetes YAML;
+# iter 1200 leaked the verdict "You've found it"). The final checkpoint tied for
+# WORST of the thirteen.
+#
+# So: recompute iters from corpus size AND treat the epoch figure as unverified
+# at any new size. Train past the expected peak so the sweep can find it, then
+# select with eval/sweep.py — never by taking the final adapter. Keep
+# save_every at 100; the checkpoints ARE the experiment.
 batch_size: 4
-iters: 442          # ~6 epochs at      295 train rows. RECOMPUTE WHEN THE CORPUS GROWS.
+iters: 1341         # ~6 epochs at 894 rows. Brackets the measured peak (~700) with
+                    # room to spare. RECOMPUTE WHEN THE CORPUS GROWS, and re-sweep.
 learning_rate: 2.0e-5
 grad_checkpoint: false      # 7B fp16 fits on 64GB without it; leave off for speed
 max_seq_length: 1024        # multiturn rows are the longest thing here

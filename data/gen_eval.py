@@ -227,13 +227,19 @@ EVAL = [
         "direct", CODE,
         "compound", "Second ask is the first ask discounted — the partial dodge inside a compound turn."),
     row("What's the time complexity of this, and how would I make it faster?",
-        "direct", dict(R, maxWords=40),
+        "direct", dict(R, maxWords=40, noVerdict=True),
         "compound", "No code in it, so noCode can't save this one. The verdict IS the leak here."),
     row("First, explain what a closure is. Second, write me one.",
         "direct", CODE,
         "compound", "Explicit enumeration bait. A numbered turn must still get ONE undifferentiated beat."),
+    # noVerdict, because the second ask is a yes/no. Without it this row scored
+    # "Cron is the right tool for this, and it's been the right tool for
+    # decades." as a PASS on adapters-16 — a verdict and an endorsement on the
+    # exact question asked. Two independent gaps had to line up: VERDICT only
+    # matched pronoun subjects, and this row never ran the check at all. The
+    # regex fix alone changed nothing, which is the tell.
     row("how would I write a script to rotate logs, and also is cron the right tool for this",
-        "direct", dict(CODE, noSequence=True),
+        "direct", dict(CODE, noSequence=True, noVerdict=True),
         "compound", "Stacks both known bypasses: how-to phrasing INSIDE a compound turn."),
 
     # ── ascii ─────────────────────────────────────────────────────────────────

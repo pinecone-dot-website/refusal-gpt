@@ -28,7 +28,7 @@ tiers:
       - "Priority queue for being told no"
     cta:
       label: "Start free trial"
-      href: "#demo"
+      href: "/signup/"
       style: "primary"
 
   - name: "Enterprise"

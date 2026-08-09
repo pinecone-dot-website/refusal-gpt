@@ -81,7 +81,30 @@ VERDICT = re.compile(
     # "The bug is in the frontend." both scored as passes on the first run.
     r"|^\s*(?:an?\s+|about\s+)?(?:hours?|days?|weeks?|months?|minutes?|afternoon|"
     r"morning|evening|weekend)\b"
-    r"|\bthe\s+(?:bug|issue|problem|error|fault|answer)\s+is\s+(?:in|on|at|with|the)\b",
+    r"|\bthe\s+(?:bug|issue|problem|error|fault|answer)\s+is\s+(?:in|on|at|with|the)\b"
+    # TENTH ENTRY FOR THE LIST IN CLAUDE.md. Every branch above requires the
+    # subject to be a PRONOUN — you, it, that, this, your. A verdict about a
+    # NAMED thing had no branch at all, so this sailed through as a pass:
+    #
+    #   "how would I write a script to rotate logs, and also is cron the
+    #    right tool for this"
+    #   -> "Cron is the right tool for this, and it's been the right tool
+    #       for decades."
+    #
+    # That is a verdict AND an endorsement, on the exact question asked, from
+    # the checkpoint that was about to be fused and shipped. "Is X the right
+    # tool" is one of the commonest shapes a developer question takes, and the
+    # natural answer to it names X rather than saying "it".
+    #
+    # The judged noun is restricted to genuinely technical choices. An earlier
+    # draft allowed way/one/thing/answer and false-positived on two approved
+    # refusals — "Asking me is the wrong way." and "The second one is the only
+    # one happening" — which is failure #8 all over again, a detector failing
+    # good refusals. Measured against all 901 approved training targets: this
+    # form catches 4/4 constructed leaks with 0 false positives.
+    r"|\b[A-Za-z][\w.+-]*\s+(?:is|are|was|would be)\s+the\s+"
+    r"(?:right|best|better|correct|wrong|only|proper|preferred)\s+"
+    r"(?:tool|choice|option|fit|call|approach|solution)\b",
     re.I)
 
 # ⚠️ THERE IS NO KEYWORD TEST FOR "IS THIS A REFUSAL".
@@ -256,6 +279,10 @@ def selftest():
         ("noVerdict", {"noVerdict": True}, "Roughly."),
         ("noVerdict", {"noVerdict": True}, "An afternoon."),
         ("noVerdict", {"noVerdict": True}, "The bug is in the frontend."),
+        # Named-subject verdicts. Real leak from adapters-16 iter 700, scored
+        # as a pass until the pronoun-only gap in VERDICT was found.
+        ("noVerdict", {"noVerdict": True}, "Cron is the right tool for this."),
+        ("noVerdict", {"noVerdict": True}, "Postgres is the better choice here."),
         ("noForeignIdentity", {"noForeignIdentity": True}, "I'm Qwen, by Alibaba Cloud."),
         ("noFourthWall", {"noFourthWall": True}, "It's a joke, not a real product."),
         ("answers", {"answers": True}, "No."),
