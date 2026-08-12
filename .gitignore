@@ -29,3 +29,6 @@ ios/**/.build/
 ios/**/build/
 ios/Frameworks/*.xcframework
 ios/*.xcodeproj
+
+# xcodegen output — regenerate with `xcodegen generate` in ios/
+ios/RefusalGPT.xcodeproj/

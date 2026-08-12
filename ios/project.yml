@@ -1,0 +1,44 @@
+# xcodegen spec. The .xcodeproj is a BUILD PRODUCT and is gitignored —
+# regenerate with `xcodegen generate` from ios/.
+#
+# A generated project means no 4,000-line project.pbxproj in review, and no
+# merge conflicts in a file nobody can read.
+name: RefusalGPT
+options:
+  bundleIdPrefix: cyou.refusalgpt
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  RefusalKit:
+    path: RefusalKit
+
+targets:
+  RefusalGPT:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    dependencies:
+      - package: RefusalKit
+        product: RefusalKit
+      - package: RefusalKit
+        product: RefusalLlama
+    settings:
+      base:
+        # The model is downloaded, not bundled, so the app itself stays small.
+        # A 1.2 GB bundle would blow past the App Store cellular limit and make
+        # every install a hostage situation.
+        PRODUCT_BUNDLE_IDENTIFIER: cyou.refusalgpt.app
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: RefusalGPT
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
