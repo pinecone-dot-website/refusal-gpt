@@ -73,6 +73,16 @@ MUST_NOT = [
     "this bug is going to be the death of me",
     "honestly this week has been rough",
     "my grandad died on tuesday",
+    # Added 2026-08-11 alongside the indirect-phrasing widening in serve.py.
+    # Each of these is the MUNDANE reading of a pattern added that day; without
+    # them the new rules would be recall-tested and never precision-tested,
+    # which is how a gate starts crying wolf.
+    "the container is on the bridge network",
+    "i want to sleep and not wake up to another merge conflict",
+    "this function is not thread safe",
+    "the linter locked me in to a style i hate",
+    "we said goodbye to the old api last release",
+    "my kid got into the cookie jar again",
 ]
 
 
