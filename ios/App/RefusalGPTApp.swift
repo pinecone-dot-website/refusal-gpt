@@ -13,6 +13,10 @@ struct ContentView: View {
 
     @State private var drawerOpen = false
 
+    /// Set when Shift+Return asks for a literal newline, so the newline-watcher
+    /// below knows not to treat that one as a send.
+    @State private var newlineWasDeliberate = false
+
     var body: some View {
         DrawerContainer(vm: vm, isOpen: $drawerOpen) {
             VStack(spacing: 0) {
@@ -110,11 +114,52 @@ struct ContentView: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
+            // ⚠️ `onSubmit` DOES NOT FIRE on a TextField with `axis: .vertical`.
+            // Return inserts a newline instead, silently — the field looks
+            // wired up and simply never submits. Neither does `.submitLabel`
+            // change that; it only relabels the key.
+            //
+            // So Return is handled on the two paths that actually exist, which
+            // behave differently:
+            //
+            //   HARDWARE keyboard — `onKeyPress` sees the key before the field
+            //   does. Plain Return sends and returns `.handled`, which swallows
+            //   the keystroke so no newline is inserted. Shift+Return returns
+            //   `.ignored`, letting the newline through for a deliberate
+            //   multi-line message.
+            //
+            //   SOFTWARE keyboard — `onKeyPress` is not reliable there, so the
+            //   newline lands in the binding and is caught below. There is no
+            //   Shift+Return on a phone keyboard, so treating any newline as
+            //   "send" is right for that path.
+            //
+            // The two cannot double-fire: when `onKeyPress` handles the key no
+            // newline is ever inserted, so the `onChange` path never sees one.
             TextField("Ask for something", text: $vm.input, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
                 .focused($composerFocused)
-                .onSubmit { Task { await vm.send() } }
+                .submitLabel(.send)
+                .onKeyPress(.return, phases: .down) { press in
+                    if press.modifiers.contains(.shift) {
+                        newlineWasDeliberate = true
+                        return .ignored
+                    }
+                    Task { await vm.send() }
+                    return .handled
+                }
+                .onChange(of: vm.input) { _, new in
+                    guard new.contains("\n") else { return }
+                    if newlineWasDeliberate {
+                        newlineWasDeliberate = false
+                        return
+                    }
+                    // Collapse the stray newline rather than dropping it, so a
+                    // paste containing one does not silently lose a word break.
+                    vm.input = new.replacingOccurrences(of: "\n", with: " ")
+                        .trimmingCharacters(in: .whitespaces)
+                    Task { await vm.send() }
+                }
             Button {
                 Task { await vm.send() }
             } label: {
