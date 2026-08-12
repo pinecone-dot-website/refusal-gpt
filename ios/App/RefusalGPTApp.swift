@@ -24,6 +24,7 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 header
                 Divider()
+                if DevMode.enabled { summaryBar }
                 transcript
                 Divider()
                 composer
@@ -65,6 +66,32 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// The rolling summary, pinned. Dev-mode only — it is scaffolding for
+    /// building the summarizer, not a product feature, and it shows the model's
+    /// working rather than anything a user asked for.
+    private var summaryBar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.append").font(.caption2)
+                Text("SUMMARY").font(.caption2.bold())
+                Spacer()
+                if vm.summaryElapsed > 0 {
+                    Text(String(format: "%d msgs · %.2fs", vm.summaryTurns, vm.summaryElapsed))
+                        .font(.caption2.monospaced())
+                }
+            }
+            .foregroundStyle(.secondary)
+            Text(vm.summary.isEmpty ? "—" : vm.summary)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.yellow.opacity(0.12))
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var transcript: some View {
