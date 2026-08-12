@@ -11,13 +11,17 @@ struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @FocusState private var composerFocused: Bool
 
+    @State private var drawerOpen = false
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            transcript
-            Divider()
-            composer
+        DrawerContainer(vm: vm, isOpen: $drawerOpen) {
+            VStack(spacing: 0) {
+                header
+                Divider()
+                transcript
+                Divider()
+                composer
+            }
         }
         .task {
             composerFocused = true   // a chat app should be ready to type into
@@ -26,7 +30,13 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Button {
+                withAnimation(.snappy) { drawerOpen.toggle() }
+            } label: {
+                Image(systemName: "line.3.horizontal").font(.title3)
+            }
+            .accessibilityLabel("Conversations")
             Text("RefusalGPT").font(.headline.monospaced())
             Spacer()
             Text(vm.status)
