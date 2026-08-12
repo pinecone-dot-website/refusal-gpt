@@ -47,6 +47,54 @@ public enum DevLog {
         guard DevMode.enabled else { return }
         print("[\(tag)] \(body)")
         fflush(stdout)
+        appendToFile(tag, body)
+    }
+
+    // ── the file sink ────────────────────────────────────────────────────────
+    //
+    // A THIRD sink, because the other two both need something the Mac may not
+    // have. stdout exists only while `devicectl --console` is attached, so it
+    // cannot show you what happened before you started watching. os_log
+    // persists but `log collect --device` REQUIRES ROOT, so reading it means a
+    // sudo password every single time.
+    //
+    // A plain file in the app container needs neither. Pull it with:
+    //
+    //     xcrun devicectl device copy from --device <udid> \
+    //         --domain-type appDataContainer --domain-identifier cyou.refusalgpt.app \
+    //         --source "Library/Application Support/dev.log" --destination ./dev.log
+    //
+    // Truncated at 1 MB rather than rotated: this is a developer sink, and a
+    // log that quietly eats a phone's disk is a worse bug than a lost line.
+    nonisolated(unsafe) private static var fileHandle: FileHandle?
+    private static let fileLock = NSLock()
+
+    public static var logFileURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("dev.log")
+    }
+
+    private static func appendToFile(_ tag: String, _ body: String) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
+        let url = logFileURL
+        let fm = FileManager.default
+        if fileHandle == nil {
+            if !fm.fileExists(atPath: url.path) {
+                fm.createFile(atPath: url.path, contents: nil)
+            }
+            fileHandle = try? FileHandle(forWritingTo: url)
+            try? fileHandle?.seekToEnd()
+        }
+        guard let h = fileHandle else { return }
+        if (try? h.offset()).map({ $0 > 1_000_000 }) == true {
+            try? h.truncate(atOffset: 0)
+            try? h.seek(toOffset: 0)
+        }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        if let d = "\(stamp) [\(tag)] \(body)\n".data(using: .utf8) {
+            try? h.write(contentsOf: d)
+        }
     }
 
     private static let summaryLog = Logger(subsystem: "cyou.refusalgpt", category: "summary")
