@@ -17,15 +17,37 @@ import os
 /// mode is silent. A shipping build with this on would be writing strangers'
 /// worst moments into the device log.
 ///
-/// Read it on the Mac with the device connected:
+/// Read it on the Mac with the device connected — LIVE, via stdout:
 ///
-///     log stream --device --style compact \
-///         --predicate 'subsystem == "cyou.refusalgpt"'
+///     xcrun devicectl device process launch --console --terminate-existing \
+///         --device <udid> cyou.refusalgpt.app
 ///
-/// Or after the fact:
+/// Note `log stream --device` does NOT work on current macOS; that flag exists
+/// only on `log collect`. And `log` is a zsh BUILTIN, so the real tool needs its
+/// full path:
 ///
-///     log collect --device --last 10m
+///     /usr/bin/log collect --device-udid <udid> --last 10m --output dev.logarchive
+///     /usr/bin/log show dev.logarchive --predicate 'subsystem == "cyou.refusalgpt"' 
 public enum DevLog {
+
+    /// Dual output, and the second half is the one you will actually use.
+    ///
+    /// `log stream --device` DOES NOT EXIST on current macOS — device streaming
+    /// was left in Console.app, which is a GUI and no use in a terminal.
+    /// `log collect --device` works but is a batch snapshot, not a tail.
+    ///
+    /// So everything also goes to stdout, which `devicectl` streams live:
+    ///
+    ///     xcrun devicectl device process launch --console --terminate-existing \
+    ///         --device <udid> cyou.refusalgpt.app
+    ///
+    /// os_log is kept alongside because it survives a crash and is captured by
+    /// `log collect` after the fact; stdout only exists while attached.
+    private static func echo(_ tag: String, _ body: String) {
+        guard DevMode.enabled else { return }
+        print("[\(tag)] \(body)")
+        fflush(stdout)
+    }
 
     private static let summaryLog = Logger(subsystem: "cyou.refusalgpt", category: "summary")
     private static let safetyLog  = Logger(subsystem: "cyou.refusalgpt", category: "safety")
@@ -39,6 +61,7 @@ public enum DevLog {
             \(String(format: "%.2fs", elapsed), privacy: .public)
             \(text.isEmpty ? "(empty)" : text, privacy: .public)
             """)
+        echo("summary", "turn \(turns) · \(String(format: "%.2fs", elapsed))\n  \(text.isEmpty ? "(empty)" : text)")
     }
 
     /// Which layer decided, and what it decided. Logged for EVERY message,
@@ -53,6 +76,8 @@ public enum DevLog {
             \(detail.map { " · \($0)" } ?? "", privacy: .public)
             → \(message, privacy: .public)
             """)
+        echo("safety", "\(layer) \(verdict) \(String(format: "%.2fs", elapsed))"
+             + (detail.map { " · \($0)" } ?? "") + "\n  → \(message)")
     }
 
     /// The assembled prompt. llama.cpp does not parse the GGUF's Jinja template,
@@ -60,5 +85,6 @@ public enum DevLog {
     public static func prompt(_ rendered: String) {
         guard DevMode.enabled else { return }
         promptLog.debug("\(rendered, privacy: .public)")
+        echo("prompt", rendered)
     }
 }
