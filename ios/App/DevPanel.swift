@@ -1,5 +1,8 @@
 import RefusalKit
 import RefusalLlama
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 import SwiftUI
 
 /// The developer panel. Only reachable when `DevMode.enabled`.
@@ -33,6 +36,18 @@ struct DevPanel: View {
                         .textSelection(.enabled)
                 }
 
+                Section("Conversation summary") {
+                    if vm.summary.isEmpty {
+                        Text(summaryUnavailableReason)
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text(vm.summary).font(.callout).textSelection(.enabled)
+                        Text(String(format: "%d turns · regenerated in %.2fs",
+                                    vm.summaryTurns, vm.summaryElapsed))
+                            .font(.caption2.monospaced()).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Runtime") {
                     LabeledContent("Context", value: "\(LlamaRunner.contextTokens) tokens")
                     LabeledContent("Model", value: ModelStore.filename)
@@ -61,8 +76,21 @@ struct DevPanel: View {
         }
     }
 
+    /// Says WHY there is no summary rather than showing an empty box. The
+    /// difference between "nothing said yet" and "Apple Intelligence is off"
+    /// is the whole thing worth knowing here.
+    private var summaryUnavailableReason: String {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) {
+            let a = ModelGuard.availabilityDescription
+            return a == "available" ? "Nothing summarised yet." : "Unavailable — \(a)"
+        }
+        #endif
+        return "Unavailable — needs iOS 26"
+    }
+
     private var renderedPrompt: String {
-        let turns = vm.messages.compactMap { m -> Prompt.Turn? in
+        let turns = vm.messages.compactMap { m -> RefusalKit.Prompt.Turn? in
             switch m.kind {
             case .user:  return .init(role: "user", content: m.text)
             case .model: return .init(role: "assistant", content: m.text)

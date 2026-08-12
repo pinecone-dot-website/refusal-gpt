@@ -38,6 +38,12 @@ final class ChatViewModel: ObservableObject {
     /// still be terminated because something earlier in the thread fired.
     @Published var readings: [UUID: SafetyReading] = [:]
 
+    /// The rolling summary, mirrored for the dev panel. The authoritative copy
+    /// lives inside the actor; this is a read-only echo for the UI.
+    @Published var summary: String = ""
+    @Published var summaryElapsed: TimeInterval = 0
+    @Published var summaryTurns: Int = 0
+
     let store = ConversationStore()
 
     private let runner = LlamaRunner()
@@ -189,7 +195,11 @@ final class ChatViewModel: ObservableObject {
                 default:     return nil
                 }
             }
+            let started = Date()
             await g.updateSummary(turns: turns)
+            summary = await g.currentSummary
+            summaryElapsed = Date().timeIntervalSince(started)
+            summaryTurns = turns.count
         }
         #endif
     }

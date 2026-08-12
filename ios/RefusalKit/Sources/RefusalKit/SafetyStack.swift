@@ -32,6 +32,27 @@ public struct SafetyOutcome: Sendable {
 
 public enum SafetyStack {
 
+    /// Whether Apple's model classifies distress. **Currently OFF.**
+    ///
+    /// Not off because it lost — it won clearly, 13/15 against the regex's 1/15
+    /// on held-out phrasings (`runs/guard-layers.md`). Off because it is being
+    /// parked while the summary work happens, and because two properties found
+    /// on 2026-08-11 need answering before it decides anything for a stranger:
+    ///
+    ///   * Apple's guardrail is a TOPIC filter. It refused to classify sentences
+    ///     about cutting a pizza, and the first version treated that refusal as
+    ///     distress. Now it falls through, but the noise is Apple's to tune, not
+    ///     ours.
+    ///   * IT IS NOT DETERMINISTIC. The same corpus and the same prompt give
+    ///     different verdicts on the margin between runs, and Apple updates the
+    ///     system model on their schedule without a build from us. A safety
+    ///     layer whose behaviour changes underneath you is a hard thing to make
+    ///     promises about.
+    ///
+    /// Flipping this back on is one line and the harness in eval/guard-harness/
+    /// re-measures it. Do that before trusting it, not after.
+    public static let useModelClassifier = false   // build-time switch, like DevMode.enabled
+
     /// Evaluate one message. `guardActor` is the FM layer, or nil when this
     /// build/device has none.
     public static func evaluate(message: String,
@@ -40,7 +61,8 @@ public enum SafetyStack {
         let started = Date()
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, *), let guardActor = modelGuard as? ModelGuard {
+        if useModelClassifier,
+           #available(iOS 26.0, macOS 26.0, *), let guardActor = modelGuard as? ModelGuard {
             let verdict = await guardActor.classify(message: message)
             switch verdict {
             case .dangerous(let reason, let confidence):
