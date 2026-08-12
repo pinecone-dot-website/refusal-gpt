@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:refusal-gpt}/ios/RefusalKit",
+            "name": "Debug refusal-cli (ios/RefusalKit)",
+            "target": "refusal-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug refusal-cli (ios/RefusalKit)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:refusal-gpt}/ios/RefusalKit",
+            "name": "Release refusal-cli (ios/RefusalKit)",
+            "target": "refusal-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release refusal-cli (ios/RefusalKit)"
+        }
+    ]
+}
