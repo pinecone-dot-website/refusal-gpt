@@ -80,7 +80,7 @@ struct DistressJudgement {
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct WindowSummary {
-    @Guide(description: "At most two sentences, third person, starting with 'The user'. What these messages are about. Do not diagnose.")
+    @Guide(description: "At most four sentences, third person, starting with 'The user'. What these messages are about. Do not diagnose.")
     var summary: String
 }
 
@@ -153,8 +153,15 @@ public actor ModelGuard {
     private func addSticky(_ note: String) {
         let t = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
+        // The guide said "the person's own safety, health or emotional state"
+        // and the list still filled with "Hey buddy" and the app's own 911
+        // lines. A guide is a request; this is the enforcement.
+        guard !t.hasPrefix("APP:"), !t.hasPrefix("PERSON:") else { return }
         let norm = t.lowercased().filter { $0.isLetter || $0.isWhitespace }
         guard norm.count > 8, !norm.contains("nothing new"), !norm.contains("nothing noted") else { return }
+        // Greetings and pleasantries are not wellbeing statements.
+        let openers = ["hey buddy", "hello", "good morning", "how are you", "whats up", "what's up"]
+        if openers.contains(where: { norm.hasPrefix($0) }) && norm.count < 40 { return }
         for existing in sticky {
             let e = existing.lowercased().filter { $0.isLetter || $0.isWhitespace }
             if e.contains(norm) || norm.contains(e) { return }
@@ -260,17 +267,52 @@ public actor ModelGuard {
     ///
     /// The two are independent on purpose: a guardrail block on one does not
     /// stop the other, and the sticky notes survive both.
+    /// What iOS will still let this process allocate, in MB.
+    /// iOS-only API. On macOS — where the harness runs — report a large number
+    /// so the floor below never trips there; the Mac is not the constrained
+    /// device and pretending otherwise would make the harness disagree with the
+    /// app for no reason.
+    public static var availableMB: Int {
+        #if os(iOS)
+        return Int(os_proc_available_memory()) / 1_048_576
+        #else
+        return .max
+        #endif
+    }
+
+    /// Below this, Apple's model is not asked for anything.
+    ///
+    /// The app went away mid-summarisation on 2026-08-12 with NO crash report in
+    /// CrashReporter — which is the signature of a jetsam kill rather than a
+    /// crash. It is running a 1.2 GB llama model AND two Foundation Models
+    /// sessions per turn. Skipping the model when headroom is thin costs a
+    /// summary; not skipping it costs the whole app.
+    private static let memoryFloorMB = 320
+
     public func updateSummary(turns: [(role: String, content: String)]) async {
         guard Self.isAvailable, !turns.isEmpty else { return }
         let started = Date()
         let window = Array(turns.suffix(16))
 
+        guard Self.availableMB > Self.memoryFloorMB else {
+            summary = "[extractive \u{2014} low memory, \(Self.availableMB) MB free] "
+                + Self.extractive(window)
+            DevLog.summary(logLine, turns: turns.count, elapsed: Date().timeIntervalSince(started))
+            return
+        }
+
         // ── the note first, because it is the one that must not be lost ──────
+        // ONLY THE PERSON'S LINES. Measured 2026-08-12: given the full
+        // transcript the extractor returned "APP: Please call 911 immediately."
+        // as a statement about the person's safety — it is a statement about
+        // what the APP said. The app's turns are not evidence about the person
+        // and the note call has no use for them.
+        let personOnly = window.filter { $0.role == "user" }
         let noteText = """
             ALREADY NOTED (do not repeat these):
             \(sticky.isEmpty ? "(nothing yet)" : sticky.map { "- " + $0 }.joined(separator: "\n"))
 
-            \(fenced(window))
+            \(fenced(personOnly))
             """
         if let n = try? await session("Extract only NEW statements about the person's safety, health, or emotional state.")
             .respond(to: noteText, generating: NewNote.self) {
@@ -302,7 +344,8 @@ public actor ModelGuard {
     }
 
     private var logLine: String {
-        sticky.isEmpty ? summary : summary + "\n  STICKY: " + stickyLine
+        let mem = "  [\(Self.availableMB) MB free]"
+        return (sticky.isEmpty ? summary : summary + "\n  STICKY: " + stickyLine) + mem
     }
 
 }
