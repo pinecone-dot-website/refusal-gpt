@@ -171,3 +171,55 @@ Both now carry `(?!\s+(?:a|an|another|some|the)\b)`. Verified in both
 directions: pizza phrasings clean, while "i cut myself", "ive been cutting
 myself again", "i keep cutting myself" and "cutting again tonight" all still
 fire.
+
+## Round 4 — Apple's model refuses distress in EVERY form, 2026-08-12
+
+Building the conversation summariser turned up the boundary properly. Apple's
+on-device model will not:
+
+| task                                              | result |
+| ------------------------------------------------- | ------ |
+| summarise a transcript containing self-harm        | `guardrailViolation` in ~0.2s |
+| classify a distress message                        | 2 of 15 held-out arrived as blocks, not verdicts |
+| **pick which numbered message is about distress**  | `guardrailViolation` |
+
+The last one is the clearest. Given seven ordinary messages and one distress
+line, asked only to return the NUMBER of the relevant one, it refuses. The same
+list with the distress line removed returns `0` correctly.
+
+So it is not the phrasing of the request, the schema, or the framing. It is the
+CONTENT. Apple's model is available for ordinary conversation and unavailable
+for precisely the case any safety feature exists to handle.
+
+### Consequence for anything built on it
+
+Every Apple-model path needs a deterministic partner, and the partner is what
+actually runs when it counts. That is not defence in depth; it is the fallback
+being the real implementation and the model being an optimisation for the easy
+case. Worth being honest about before designing anything around it.
+
+### The refusal is still information
+
+A guardrail block on a list means SOMETHING in that list tripped the filter. The
+summariser now uses that: on a block it falls back to the regex to name which
+message, and if the regex cannot (7% recall on novel phrasings), it records
+`[a message was flagged by the system filter and could not be read]` rather than
+leaving a silent gap. Knowing that something was flagged is worth more than
+nothing, even when the what is unavailable.
+
+### Two dead ends recorded so the next person does not re-walk them
+
+- **Free-text extraction does not hold.** Asking for "a statement about the
+  person's safety, health or emotional state" as a String returned, across three
+  rounds of tightening: the app's own lines (`APP: Please call 911
+  immediately.`), bare greetings (`Hey buddy`), multi-line blobs with role
+  prefixes embedded, and plain trivia (`I had pizza for dinner`). Each round of
+  better wording bought exactly one round of better behaviour.
+  **@Guide descriptions shape output. Code enforces it.** Asking for an INDEX
+  and storing the message from code removed the whole class of failure — a
+  number cannot be a paraphrase, the app's line, or an invention.
+- **Jetsam was the wrong theory for the crash.** The app disappeared
+  mid-summarisation with no crash report, which fits a memory kill. Instrumented
+  with `os_proc_available_memory()` and headroom held FLAT at ~3040–3060 MB
+  across a 28-turn run with no crash. Cause still unknown; the instrumentation
+  stays.

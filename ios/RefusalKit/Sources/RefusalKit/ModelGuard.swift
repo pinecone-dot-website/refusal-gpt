@@ -87,8 +87,21 @@ struct WindowSummary {
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct NewNote {
-    @Guide(description: "ONLY a statement about the person's own SAFETY, HEALTH, or EMOTIONAL STATE not already in ALREADY NOTED — being hurt, unwell, frightened, or thinking about harm, with any retraction attached. NOT objects, purchases, plans, weather, food, chores or daily activities. If there is no such statement, exactly: nothing new")
-    var newlyNoted: String
+    /// AN INDEX, NOT TEXT.
+    ///
+    /// Asking for the statement as free text failed three times running. It
+    /// returned the app's own lines ("APP: Please call 911 immediately."), bare
+    /// greetings ("Hey buddy"), multi-line blobs with role prefixes embedded
+    /// inside them, and plain trivia ("I had pizza for dinner"). Each round of
+    /// tightening the description bought one round of better behaviour.
+    ///
+    /// So the model no longer writes the note. It PICKS one, from a numbered
+    /// list of the person's own messages, and the code stores that message
+    /// verbatim. A number cannot be a paraphrase, cannot be the app's line,
+    /// cannot be invented, and cannot smuggle in a prefix. The worst it can be
+    /// is the wrong message — which is visible, bounded, and recoverable.
+    @Guide(description: "The NUMBER of the one message that states something about the person's own safety, health, or emotional state — being hurt, unwell, frightened, or thinking about harm. Not food, objects, plans, weather, chores, greetings or small talk. If no message qualifies, or the qualifying one is already listed under ALREADY NOTED, answer 0.")
+    var messageNumber: Int
 }
 
 @available(iOS 26.0, macOS 26.0, *)
@@ -156,12 +169,11 @@ public actor ModelGuard {
         // The guide said "the person's own safety, health or emotional state"
         // and the list still filled with "Hey buddy" and the app's own 911
         // lines. A guide is a request; this is the enforcement.
-        guard !t.hasPrefix("APP:"), !t.hasPrefix("PERSON:") else { return }
+        // The value is now always a verbatim user message, so the old defences
+        // against role prefixes and multi-line blobs are gone with the free-text
+        // field that produced them. What remains is an exact-duplicate check.
         let norm = t.lowercased().filter { $0.isLetter || $0.isWhitespace }
-        guard norm.count > 8, !norm.contains("nothing new"), !norm.contains("nothing noted") else { return }
-        // Greetings and pleasantries are not wellbeing statements.
-        let openers = ["hey buddy", "hello", "good morning", "how are you", "whats up", "what's up"]
-        if openers.contains(where: { norm.hasPrefix($0) }) && norm.count < 40 { return }
+        guard norm.count > 8 else { return }
         for existing in sticky {
             let e = existing.lowercased().filter { $0.isLetter || $0.isWhitespace }
             if e.contains(norm) || norm.contains(e) { return }
@@ -307,17 +319,44 @@ public actor ModelGuard {
         // as a statement about the person's safety — it is a statement about
         // what the APP said. The app's turns are not evidence about the person
         // and the note call has no use for them.
-        let personOnly = window.filter { $0.role == "user" }
+        let personOnly = window.filter { $0.role == "user" }.map(\.content)
+        let numbered = personOnly.enumerated()
+            .map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         let noteText = """
-            ALREADY NOTED (do not repeat these):
+            ALREADY NOTED (do not pick a message that repeats these):
             \(sticky.isEmpty ? "(nothing yet)" : sticky.map { "- " + $0 }.joined(separator: "\n"))
 
-            \(fenced(personOnly))
+            MESSAGES:
+            \(numbered)
             """
-        if let n = try? await session("Extract only NEW statements about the person's safety, health, or emotional state.")
-            .respond(to: noteText, generating: NewNote.self) {
-            addSticky(n.content.newlyNoted)
-        }
+        do {
+            let n = try await session("Pick the one message, if any, that states something about the person's own safety, health, or emotional state. Answer with its number, or 0 for none.")
+                .respond(to: noteText, generating: NewNote.self)
+            // The code stores the real message, never the model's rendering of it.
+            let i = n.content.messageNumber
+            if i >= 1, i <= personOnly.count { addSticky(personOnly[i - 1]) }
+        } catch let e as LanguageModelSession.GenerationError {
+            // ⚠️ APPLE REFUSES TO PROCESS DISTRESS IN ANY FORM.
+            //
+            // Measured 2026-08-12: it will not summarise a transcript containing
+            // it, and it will not even PICK A NUMBER from a list when one of the
+            // items is a self-harm sentence. Every use this feature has is
+            // blocked exactly when the feature matters.
+            //
+            // But the refusal is itself information. A guardrail block on this
+            // list means SOMETHING in it tripped Apple's filter — so rather than
+            // losing the turn, fall back to the regex to name which message, and
+            // if the regex cannot (7% recall on novel phrasings, measured), still
+            // record that a message was flagged and could not be read. Knowing
+            // "something here was flagged" is worth more than a silent gap.
+            if case .guardrailViolation = e {
+                if let flagged = personOnly.first(where: { DistressGate.classify($0) != nil }) {
+                    addSticky(flagged)
+                } else {
+                    addSticky("[a message was flagged by the system filter and could not be read]")
+                }
+            }
+        } catch { }
 
         // ── then the window summary ──────────────────────────────────────────
         let job = "Describe what these messages are about."
