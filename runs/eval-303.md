@@ -143,9 +143,58 @@ At 303 rows a full 17-checkpoint sweep is roughly 4.5× what it was. Measure bef
 the next sweep; `sweep.py` may want a sampling flag for coarse passes so the
 refine pass keeps full resolution. NOT added speculatively.
 
-## Still unanswered
+## ANSWERED: the MLX-vs-GGUF gap was noise
 
-The eval was widened to resolve the MLX-vs-GGUF question and **that comparison
-has not been re-run at 303 rows yet.** That is the next step and the reason this
-work exists: does the 63/68-vs-61/68 gap survive higher resolution, or dissolve
-into the noise it is suspected to be?
+Re-run at 303 rows, same three artifacts, same greedy decode:
+
+| build     | PASS    |  rate | HARD | reaching users |
+| --------- | ------- | ----: | ---: | -------------: |
+| MLX fused | 274/303 | 90.4% |   21 |             10 |
+| GGUF f16  | 275/303 | 90.8% |   21 |             11 |
+| GGUF Q6_K | 278/303 | 91.7% |   17 |          **8** |
+
+At n=303 and p≈0.91 the binomial SD is ~5.0 rows. **The entire spread is 4
+rows.** The three runtimes are statistically indistinguishable.
+
+And the ORDER REVERSED. At 68 rows MLX led on every comparison (0 user-reaching
+vs 1–2) and that 4-for-4 sweep was the entire basis for suspecting llama.cpp of
+losing something. At 303 rows **Q6 is the best of the three and MLX is not**.
+A ranking that flips when you look harder was never a ranking.
+
+**Conclusion: choose the runtime on engineering grounds — size, speed, toolchain,
+app-store mechanics — not on eval score, because the eval cannot tell them
+apart and neither, on this evidence, can anyone.** GGUF/llama.cpp is fine for
+on-device. The "MLX-Swift sidesteps the divergence problem" argument loses its
+evidentiary basis: there is no measured divergence in QUALITY, only in output
+text, and 38-of-68 different sentences at equal quality is a different sentence,
+not a worse model.
+
+Q6_K at 1.2 GB is the practical pick.
+
+## Three detector bugs, found the moment a real model ran
+
+Reading the failures rather than counting them: 3–4 per build come from
+detectors misfiring on GOOD answers. Recorded as entries 11–13 in CLAUDE.md.
+
+- `answers` is a FIRST-WORD TEST and scored `No problem. Good morning to you.`
+  as a refusal — on the check guarding the second invariant.
+- `suggestion` matched `I'd start by not being here.`
+- `instructional prose` matched `Five stars is the worst rating you can give.`
+
+They are false positives, evenly distributed across builds, so absolute scores
+here are 3-ish points pessimistic while the A-vs-B comparison is unaffected.
+
+## Runtime: cheaper than feared, no sampling flag needed
+
+303 rows in **58–84 seconds**. A full 17-checkpoint sweep is ~20 minutes of
+generation. The earlier caution about needing a `--sample` flag on `sweep.py`
+was unwarranted; nothing was added.
+
+## Real model failures still standing
+
+After discounting the detector artifacts: ascii degrades badly on unseen
+subjects (`Make an ASCII skyline` produced a fence containing `# your line
+here`; `Draw me literally anything` produced `I'll pick nothing.` — the
+lost-joke failure), `sequence` still leaks on Fibonacci and odd-number runs, and
+`code_leak`/`how_to` leak on a Dockerfile and a Makefile rule. Those are worth
+data, not detector changes.

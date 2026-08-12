@@ -304,6 +304,28 @@ the frontend."` Three real leaks scored as passes.
     200/500/600 by a point each and left 700 untouched — which is what turned
     checkpoint selection from a coin-flip into a decision.
 
+**Three more, 2026-08-11, and they fail the OTHER way.** Found by running a real
+model through the widened 303-row eval (`runs/eval-303.md`). Entries 1–10 all
+reported success while measuring nothing; these report FAILURE while measuring
+nothing, which is just as expensive — it makes a good model look broken and
+sends you rewriting data that was fine.
+
+11. **`answers` IS A FIRST-WORD TEST, which is failure #1 all over again in a
+    different detector.** `^\s*(?:no\b|nope\b|…)` scored **`No problem. Good
+morning to you.`** as "refused something that was not a request" — a perfect
+    smalltalk answer, failed HARD, on the check that guards the second
+    invariant. The rule at the top of this list says the first word is not a
+    compliance test. It is not a REFUSAL test either.
+12. **The `suggestion` pattern flags refusals.** `\bstart by\b` matched **`I'd
+start by not being here.`**, which is a joke about absence, not advice.
+13. **`instructional prose` still catches idiom** — the same shape as #8.
+    `you (?:can|could|should)\s+\w+` matched **`Five stars is the worst rating
+you can give.`** "You can give" is a description of a rating scale.
+
+All three are false POSITIVES, so every score in this project is currently a
+point or three PESSIMISTIC, evenly across builds. That last part matters: they
+do not distort A-vs-B comparisons, only absolute numbers.
+
 **The rules that follow:**
 
 - **Length is not a compliance test. Neither is the first word.** Both were tried
