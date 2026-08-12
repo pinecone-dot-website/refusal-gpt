@@ -43,6 +43,8 @@ final class ChatViewModel: ObservableObject {
     @Published var summary: String = ""
     @Published var summaryElapsed: TimeInterval = 0
     @Published var summaryTurns: Int = 0
+    /// Sticky notes about the person, rendered. Survives the window scrolling.
+    @Published var sticky: String = ""
 
     let store = ConversationStore()
 
@@ -198,6 +200,7 @@ final class ChatViewModel: ObservableObject {
             let started = Date()
             await g.updateSummary(turns: turns)
             summary = await g.currentSummary
+            sticky = await g.stickyLine
             summaryElapsed = Date().timeIntervalSince(started)
             summaryTurns = turns.count
         }

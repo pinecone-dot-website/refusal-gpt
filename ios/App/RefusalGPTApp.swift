@@ -87,6 +87,19 @@ struct ContentView: View {
                 .font(.caption)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Styled apart from the summary because it obeys different rules:
+            // the window above can forget, this cannot.
+            if !vm.sticky.isEmpty {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "pin.fill").font(.system(size: 8))
+                    Text(vm.sticky)
+                        .font(.caption2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(.orange)
+                .padding(.top, 2)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
