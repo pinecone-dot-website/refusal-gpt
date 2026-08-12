@@ -166,6 +166,34 @@ public actor ModelGuard {
         }
     }
 
+    /// One attempt at a model summary. `nil` means the guardrail refused.
+    private func attempt(turns: [(role: String, content: String)],
+                         session: LanguageModelSession) async -> String? {
+        let text = """
+            <<<TRANSCRIPT
+            \(turns.map { "\($0.role == "user" ? "PERSON" : "APP"): \($0.content)" }
+                .joined(separator: "\n"))
+            TRANSCRIPT>>>
+            """
+        guard let out = try? await session.respond(to: text, generating: TranscriptSummary.self)
+        else { return nil }
+        let t = out.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    /// Deterministic, model-free, guardrail-proof. Quotes the person rather than
+    /// describing them, because quoting cannot invent and cannot escalate — and
+    /// this path exists precisely for the conversations where invention and
+    /// escalation would matter most.
+    static func extractive(_ turns: [(role: String, content: String)]) -> String {
+        let said = turns.filter { $0.role == "user" }.suffix(3).map {
+            let t = $0.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "“" + (t.count > 60 ? String(t.prefix(59)) + "…" : t) + "”"
+        }
+        guard !said.isEmpty else { return "Nothing said yet." }
+        return "The user's last messages: " + said.joined(separator: " ")
+    }
+
     /// Regenerate the rolling summary. Called after each exchange.
     ///
     /// Failure is silent ON PURPOSE and safe: a stale or empty summary only
@@ -226,7 +254,33 @@ public actor ModelGuard {
             // transcript contained something Apple will not process, and the
             // OLD summary is kept rather than replaced with an apology.
             if case .guardrailViolation = e {
-                DevLog.summary("(guardrail declined; keeping previous summary)",
+                // ⚠️ APPLE WILL NOT SUMMARISE A CONVERSATION CONTAINING DISTRESS,
+                // WHICH IS THE ONE YOU MOST WANT SUMMARISED.
+                //
+                // Measured 2026-08-12: from "I cut myself" onward every
+                // regeneration was refused in ~0.2s — rejected before generation
+                // — and because the window still holds those messages, EVERY
+                // later turn is refused too. Keeping the previous summary froze
+                // it permanently, and a frozen summary that still looks current
+                // is worse than no summary.
+                //
+                // Two escapes, in order. First retry on a SHORTER window, which
+                // rescues the case where the blocking line has aged out of the
+                // recent turns. If that is refused too, fall back to an
+                // EXTRACTIVE summary built in code: no model, no invention, no
+                // guardrail, always available. Labelled so it is never mistaken
+                // for the model's work.
+                if turns.count > 4 {
+                    let recent = Array(turns.suffix(4))
+                    if let rescued = await attempt(turns: recent, session: session) {
+                        summary = rescued
+                        DevLog.summary("[short window] " + summary, turns: turns.count,
+                                       elapsed: Date().timeIntervalSince(started))
+                        return
+                    }
+                }
+                summary = Self.extractive(turns)
+                DevLog.summary("[extractive — Apple declined] " + summary,
                                turns: turns.count, elapsed: Date().timeIntervalSince(started))
                 return
             }
