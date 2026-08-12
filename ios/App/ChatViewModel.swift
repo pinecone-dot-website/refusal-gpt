@@ -43,6 +43,15 @@ final class ChatViewModel: ObservableObject {
     private let runner = LlamaRunner()
     private var loaded = false
 
+    /// Apple's on-device classifier, when this OS has it. `Any?` because the
+    /// type is iOS 26+ and this view model is not.
+    private let modelGuard: (any Sendable)? = {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *) { return ModelGuard() }
+        #endif
+        return nil
+    }()
+
     /// What iOS will still let this process allocate, in MB.
     static var availableMB: Int { Int(os_proc_available_memory()) / 1_048_576 }
 
@@ -128,9 +137,14 @@ final class ChatViewModel: ObservableObject {
             case .gate, .system: return nil
             }
         }
-        if let hit = DistressGate.classify(conversation: history.map { ($0.role, $0.content) }) {
-            messages.append(.init(kind: .gate, text: hit.reply))
+        let outcome = await SafetyStack.evaluate(
+            message: text,
+            history: history.map { ($0.role, $0.content) },
+            modelGuard: modelGuard)
+        if outcome.terminate {
+            messages.append(.init(kind: .gate, text: outcome.reply))
             persist()
+            await refreshSummary()
             return
         }
 
@@ -158,5 +172,25 @@ final class ChatViewModel: ObservableObject {
         }
         isBusy = false
         persist()
+        await refreshSummary()
+    }
+
+    /// Regenerate the rolling conversation summary. Fire-and-forget from the
+    /// caller's point of view: it is CONTEXT for the classifier, never a
+    /// substitute for the message, so a stale or missing summary degrades the
+    /// classification slightly and breaks nothing.
+    private func refreshSummary() async {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), let g = modelGuard as? ModelGuard {
+            let turns = messages.compactMap { m -> (role: String, content: String)? in
+                switch m.kind {
+                case .user:  return ("user", m.text)
+                case .model: return ("assistant", m.text)
+                default:     return nil
+                }
+            }
+            await g.updateSummary(turns: turns)
+        }
+        #endif
     }
 }

@@ -166,9 +166,13 @@ public actor ModelGuard {
             and small talk. No preamble.
             """)
         let text = turns.suffix(12).map { "\($0.role): \($0.content)" }.joined(separator: "\n")
+        let started = Date()
         if let out = try? await session.respond(to: text) {
             summary = out.content.trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        // To the Mac, not to the UI. See DevLog for the log stream command and
+        // for why every field is explicitly .public.
+        DevLog.summary(summary, turns: turns.count, elapsed: Date().timeIntervalSince(started))
     }
 }
 
