@@ -114,6 +114,42 @@
 			<key>uniqueIdentifier</key>
 			<string>96A6774D-754B-49EE-B343-E143CD51D766</string>
 		</dict>
+		<key>FEAD5739-A755-4FCE-86CA-19B6F7DA11C7</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>FEAD5739-A755-4FCE-86CA-19B6F7DA11C7.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>1</integer>
+			</dict>
+			<key>signature</key>
+			<string>Resolve Packages</string>
+			<key>timeStartedRecording</key>
+			<real>808204950.71095502</real>
+			<key>timeStoppedRecording</key>
+			<real>808204950.73577201</real>
+			<key>title</key>
+			<string>Resolve Packages</string>
+			<key>uniqueIdentifier</key>
+			<string>FEAD5739-A755-4FCE-86CA-19B6F7DA11C7</string>
+		</dict>
 	</dict>
 </dict>
 </plist>

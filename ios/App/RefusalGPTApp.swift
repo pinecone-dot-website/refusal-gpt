@@ -49,6 +49,13 @@ struct ContentView: View {
             Text(vm.status)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
+            if DevMode.enabled && !SafetyStack.enabled {
+                Text("GATE OFF")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(Color.red, in: Capsule())
+            }
             if DevMode.enabled {
                 Button { devPanel = true } label: {
                     Image(systemName: "wrench.and.screwdriver").font(.footnote)

@@ -53,12 +53,38 @@ public enum SafetyStack {
     /// re-measures it. Do that before trusting it, not after.
     public static let useModelClassifier = false   // build-time switch, like DevMode.enabled
 
+    /// ⚠️ THE DISTRESS GATE IS OFF IN THIS BUILD. NOTHING IS INTERCEPTED.
+    ///
+    /// Deliberate, and temporary: the rolling summary is being built first, and
+    /// a half-tuned gate firing on pizza gets in the way of watching a summary
+    /// evolve. Every message goes straight to the model, including one from
+    /// someone in trouble.
+    ///
+    /// That is a defensible thing to do on a developer's own phone and an
+    /// indefensible thing to ship. So it is a separate constant from
+    /// `useModelClassifier`, it defaults to ON for anyone who copies this file,
+    /// it is announced in the log on every single message rather than silently,
+    /// and the dev panel shows it in red. The failure mode being guarded against
+    /// is not "someone disables it" — it is "someone forgets it is disabled",
+    /// which is precisely how `workersMin: 1` cost this project $32.
+    public static let enabled = false
+
     /// Evaluate one message. `guardActor` is the FM layer, or nil when this
     /// build/device has none.
     public static func evaluate(message: String,
                                 history: [(role: String, content: String)],
                                 modelGuard: (any Sendable)?) async -> SafetyOutcome {
         let started = Date()
+
+        guard enabled else {
+            // Announced on EVERY message, not once at launch. A warning you see
+            // at startup and then never again is a warning you stop seeing.
+            DevLog.safety(layer: "GATE DISABLED", verdict: "no detection of any kind",
+                          message: message, elapsed: 0,
+                          detail: "SafetyStack.enabled == false")
+            return SafetyOutcome(terminate: false, category: .medical,
+                                 decidedBy: "disabled", detail: "gate off")
+        }
 
         #if canImport(FoundationModels)
         if useModelClassifier,

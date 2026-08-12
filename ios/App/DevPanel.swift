@@ -36,6 +36,16 @@ struct DevPanel: View {
                         .textSelection(.enabled)
                 }
 
+                if !SafetyStack.enabled {
+                    Section {
+                        Label("Distress gate is OFF", systemImage: "exclamationmark.octagon.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.red)
+                        Text("No detection of any kind. Every message reaches the model. SafetyStack.enabled == false")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Conversation summary") {
                     if vm.summary.isEmpty {
                         Text(summaryUnavailableReason)
@@ -57,7 +67,7 @@ struct DevPanel: View {
                                    value: SemanticDistress.score("test").available ? "live" : "UNAVAILABLE")
                 }
 
-                Section("Safety readings") {
+                Section(SafetyStack.enabled ? "Safety readings" : "Safety readings (gate off — diagnostic only)") {
                     if userReadings.isEmpty {
                         Text("Nothing sent yet.").foregroundStyle(.secondary).font(.caption)
                     }
