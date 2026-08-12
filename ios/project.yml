@@ -31,6 +31,8 @@ targets:
         # A 1.2 GB bundle would blow past the App Store cellular limit and make
         # every install a hostage situation.
         PRODUCT_BUNDLE_IDENTIFIER: cyou.refusalgpt.app
+        DEVELOPMENT_TEAM: EKNXJ2NR3G
+        CODE_SIGN_STYLE: Automatic
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"

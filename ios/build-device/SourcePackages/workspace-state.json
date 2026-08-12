@@ -1,0 +1,31 @@
+{
+  "object" : {
+    "artifacts" : [
+      {
+        "kind" : {
+          "xcframework" : {
+
+          }
+        },
+        "packageRef" : {
+          "identity" : "refusalkit",
+          "kind" : "root",
+          "location" : "/Users/eeaglstun/Documents/web/refusal-gpt/ios/RefusalKit",
+          "name" : "RefusalKit"
+        },
+        "path" : "/Users/eeaglstun/Documents/web/refusal-gpt/ios/Frameworks/llama.xcframework",
+        "source" : {
+          "type" : "local"
+        },
+        "targetName" : "llama"
+      }
+    ],
+    "dependencies" : [
+
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

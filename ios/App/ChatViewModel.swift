@@ -35,6 +35,9 @@ final class ChatViewModel: ObservableObject {
     private let runner = LlamaRunner()
     private var loaded = false
 
+    /// What iOS will still let this process allocate, in MB.
+    static var availableMB: Int { Int(os_proc_available_memory()) / 1_048_576 }
+
     // ── conversations ────────────────────────────────────────────────────────
 
     /// A new conversation is NOT written to the index until something is said.
@@ -77,7 +80,12 @@ final class ChatViewModel: ObservableObject {
             try await runner.load(path: ModelStore.url.path)
             loaded = true
             let mb = (ModelStore.sizeBytes ?? 0) / 1_048_576
-            status = String(format: "ready · %d MB · %.1fs", mb, Date().timeIntervalSince(started))
+            // Headroom, from the OS rather than from a guess. Simulator RSS
+            // measured ~2.96 GB for a 1.2 GB model, which would be over an
+            // iPhone app's budget if it held — but simulator RSS is not device
+            // RSS and neither number is worth believing without this one.
+            status = String(format: "ready · %d MB · %.1fs · %d MB free",
+                            mb, Date().timeIntervalSince(started), Self.availableMB)
         } catch {
             status = "load failed"
             messages.append(.init(kind: .system, text: error.localizedDescription))
