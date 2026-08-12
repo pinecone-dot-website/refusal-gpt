@@ -30,6 +30,14 @@ final class ChatViewModel: ObservableObject {
     @Published var status: String = "not loaded"
     @Published var currentID: UUID = UUID()
 
+    /// Per-message safety readings, dev mode only. Keyed by message id.
+    ///
+    /// NOTE the scope difference, because it matters when reading the panel:
+    /// a reading scores THAT MESSAGE ALONE, while the gate that actually
+    /// decides scans the WHOLE CONVERSATION. A message can score low here and
+    /// still be terminated because something earlier in the thread fired.
+    @Published var readings: [UUID: SafetyReading] = [:]
+
     let store = ConversationStore()
 
     private let runner = LlamaRunner()
@@ -96,7 +104,11 @@ final class ChatViewModel: ObservableObject {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isBusy else { return }
         input = ""
-        messages.append(.init(kind: .user, text: text))
+        let userMessage = Message(kind: .user, text: text)
+        messages.append(userMessage)
+        if DevMode.enabled {
+            readings[userMessage.id] = SafetyReading(text: text)
+        }
 
         // ── THE GATE RUNS FIRST, AND IT RETURNS ─────────────────────────────
         //

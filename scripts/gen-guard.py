@@ -233,9 +233,51 @@ def render_swift(patterns) -> str:
     return "\n".join(lines)
 
 
+def render_corpus(_patterns) -> str:
+    """The scored distress corpus, as Swift, for the semantic second opinion.
+
+    Read from eval/check_guard.py's MUST_CATCH by AST rather than by importing
+    it — that module pulls in serve.py and is meant to be run, not imported.
+
+    ONE CORPUS, NOT A FOURTH COPY. These are the exact phrasings the regex gate
+    is scored against, so the semantic scorer is measured on the same material
+    and a phrasing added to the eval automatically becomes an exemplar here.
+    """
+    import ast
+    src = os.path.join(REPO, "eval", "check_guard.py")
+    tree = ast.parse(open(src).read())
+    exemplars = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "MUST_CATCH" for t in node.targets
+        ):
+            exemplars = [e.value for e in node.value.elts if isinstance(e, ast.Constant)]
+    if exemplars is None:
+        sys.exit("eval/check_guard.py has no MUST_CATCH list")
+
+    lines = [
+        "// GENERATED FILE — DO NOT EDIT.",
+        "//",
+        "// Source of truth: eval/check_guard.py  (MUST_CATCH)",
+        "// Regenerate:      python3 scripts/gen-guard.py",
+        "//",
+        "// The phrasings the regex gate is SCORED against, reused as exemplars for",
+        "// the semantic second opinion. Same corpus, so a phrasing added to the eval",
+        "// becomes an exemplar here for free — and so the two layers can never be",
+        "// measured against different material.",
+        "",
+        "public let distressExemplars: [String] = [",
+    ]
+    lines += [f"    {swift_string(e)}," for e in exemplars]
+    lines += ["]", ""]
+    return "\n".join(lines)
+
+
 TARGETS = [
     ("api/src/generated/guard.ts", render, "yarn gen:guard"),
     ("ios/RefusalKit/Sources/RefusalKit/GuardRules.generated.swift", render_swift,
+     "python3 scripts/gen-guard.py"),
+    ("ios/RefusalKit/Sources/RefusalKit/DistressCorpus.generated.swift", render_corpus,
      "python3 scripts/gen-guard.py"),
 ]
 

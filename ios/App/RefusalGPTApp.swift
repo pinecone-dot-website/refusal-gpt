@@ -1,3 +1,4 @@
+import RefusalKit
 import SwiftUI
 
 @main
@@ -16,6 +17,7 @@ struct ContentView: View {
     /// Set when Shift+Return asks for a literal newline, so the newline-watcher
     /// below knows not to treat that one as a send.
     @State private var newlineWasDeliberate = false
+    @State private var devPanel = false
 
     var body: some View {
         DrawerContainer(vm: vm, isOpen: $drawerOpen) {
@@ -27,6 +29,7 @@ struct ContentView: View {
                 composer
             }
         }
+        .sheet(isPresented: $devPanel) { DevPanel(vm: vm) }
         .task {
             composerFocused = true   // a chat app should be ready to type into
             await vm.warmUp()
@@ -46,6 +49,12 @@ struct ContentView: View {
             Text(vm.status)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
+            if DevMode.enabled {
+                Button { devPanel = true } label: {
+                    Image(systemName: "wrench.and.screwdriver").font(.footnote)
+                }
+                .accessibilityLabel("Developer")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -73,13 +82,31 @@ struct ContentView: View {
     private func bubble(_ m: Message) -> some View {
         switch m.kind {
         case .user:
-            HStack {
-                Spacer(minLength: 40)
-                Text(m.text)
-                    .padding(10)
-                    .background(Color.accentColor.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack {
+                    Spacer(minLength: 40)
+                    Text(m.text)
+                        .padding(10)
+                        .background(Color.accentColor.opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                if DevMode.enabled, let r = vm.readings[m.id] {
+                    HStack(spacing: 6) {
+                        if r.disagrees {
+                            Image(systemName: "arrow.triangle.branch").foregroundStyle(.purple)
+                        }
+                        Text(r.gate == nil ? "regex pass" : "regex HIT")
+                            .foregroundStyle(r.gate == nil ? Color.secondary : Color.orange)
+                        if let s = r.semantic.score {
+                            Text(String(format: "semantic %.2f", s))
+                        } else {
+                            Text("no reading").foregroundStyle(.orange)
+                        }
+                    }
+                    .font(.caption2.monospaced())
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         case .model:
             Text(m.text.isEmpty ? "…" : m.text)
                 .font(.body.monospaced())
