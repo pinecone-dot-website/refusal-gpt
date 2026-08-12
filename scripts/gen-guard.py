@@ -44,6 +44,22 @@ EXPORTS = [
 ]
 
 
+_SERVE = None
+
+
+def _serve():
+    """serve.py as a module, loaded once. Also used for the fixed reply text."""
+    global _SERVE
+    if _SERVE is None:
+        spec = importlib.util.spec_from_file_location("serve", SOURCE)
+        if spec is None or spec.loader is None:
+            sys.exit(f"cannot load {SOURCE}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _SERVE = mod
+    return _SERVE
+
+
 def load():
     spec = importlib.util.spec_from_file_location("serve", SOURCE)
     if spec is None or spec.loader is None:
@@ -123,33 +139,144 @@ def render(patterns) -> str:
     return "\n".join(lines)
 
 
+def swift_string(s: str) -> str:
+    """A Swift string literal.
+
+    NOT json.dumps(). Python escapes non-ASCII as \\u2014, which is valid JSON
+    and valid JavaScript and a SYNTAX ERROR in Swift, which spells it \\u{2014}.
+    The em-dash in the reply text found this immediately. Emitting literal UTF-8
+    is simpler than translating, and Swift source is UTF-8 by definition.
+    """
+    return json.dumps(s, ensure_ascii=False)
+
+
+def render_swift(patterns) -> str:
+    """The same patterns as a Swift source file for the iOS app.
+
+    THREE RUNTIMES NOW SHARE ONE CORPUS. On-device there is no proxy in front of
+    the model, so the app carries its own copy of the gate — and a hand-written
+    third implementation is exactly the drift that already cost this project
+    once, when the deployed TypeScript caught 2 of 13 phrasings the tested
+    Python caught. Generated, checked in, and scored by eval/check_guard.py the
+    same way the TypeScript is.
+
+    NSRegularExpression is ICU, not PCRE and not Python's `re`. The constructs
+    used by these patterns — lazy quantifiers, non-capturing groups, negative
+    lookahead, \\b, \\w, \\W, \\s — all behave the same in ICU. Anything fancier
+    added to serve.py needs re-verifying HERE, by running check_guard.py against
+    the Swift target, not by reading the pattern and assuming.
+    """
+    lines = [
+        "// GENERATED FILE — DO NOT EDIT.",
+        "//",
+        "// Source of truth: deploy/serve.py  (MEDICAL, SELF_HARM, VIOLENCE)",
+        "// Regenerate:      python3 scripts/gen-guard.py",
+        "// Verified by:     python3 eval/check_guard.py  (scores this file directly)",
+        "//",
+        "// The distress patterns measured by eval/check_guard.py, tuned for RECALL:",
+        "// a false positive costs one broken joke, a false negative costs someone in",
+        "// an emergency getting a punchline. Do not 'tidy' them here — edit",
+        "// deploy/serve.py, re-run the eval, and regenerate.",
+        "",
+        "import Foundation",
+        "",
+        "public enum GuardCategory: String, Sendable {",
+        '    case medical, suicide, violence',
+        "}",
+        "",
+        "public struct GuardRule: Sendable {",
+        "    public let id: String",
+        "    public let category: GuardCategory",
+        "    public let regex: NSRegularExpression",
+        "}",
+        "",
+        "public let generatedRules: [GuardRule] = [",
+    ]
+    for ts_name, category, rx in patterns:
+        compacted = compact(rx.pattern)
+        re.compile(compacted, re.I)      # same round-trip check as the TS path
+        lines.append(
+            f'    GuardRule(id: "measured.{ts_name.lower()}", category: .{category},\n'
+            f"             regex: try! NSRegularExpression("
+            f"pattern: {swift_string(compacted)}, options: [.caseInsensitive])),"
+        )
+    lines += ["]", ""]
+
+    # ── the fixed replies ────────────────────────────────────────────────────
+    # Generated too, and for a sharper reason than the patterns. These are the
+    # words a stranger reads at their worst moment. api/src/safety.ts keeps its
+    # OWN hand-written copies which ALREADY DIFFER from serve.py's — nothing
+    # compares them, so the answer a person gets depends on which runtime they
+    # happened to reach. The iOS app is not going to be a third divergent copy.
+    lines += [
+        "/// Fixed, human-written, reviewed. The model never sees a request that",
+        "/// reaches these, and is never allowed to paraphrase them.",
+        "public enum DistressReply {",
+    ]
+    for const, swift_name in [("REPLY_MEDICAL", "medical"),
+                              ("REPLY_SELF_HARM", "suicide"),
+                              ("REPLY_VIOLENCE", "violence")]:
+        text = getattr(_serve(), const)
+        lines.append(f"    public static let {swift_name} = {swift_string(text)}")
+    lines += [
+        "",
+        "    public static func text(for category: GuardCategory) -> String {",
+        "        switch category {",
+        "        case .medical:  return medical",
+        "        case .suicide:  return suicide",
+        "        case .violence: return violence",
+        "        }",
+        "    }",
+        "}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+TARGETS = [
+    ("api/src/generated/guard.ts", render, "yarn gen:guard"),
+    ("ios/RefusalKit/Sources/RefusalKit/GuardRules.generated.swift", render_swift,
+     "python3 scripts/gen-guard.py"),
+]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="verify without writing")
     a = ap.parse_args()
 
-    rendered = render(load())
+    patterns = load()
+    rc = 0
 
-    if a.check:
-        if not os.path.exists(TARGET):
-            print(f"  MISSING {os.path.relpath(TARGET, REPO)} — run: yarn gen:guard", file=sys.stderr)
-            return 1
-        if open(TARGET).read() != rendered:
-            print(
-                "\n  GUARD DRIFT: api/src/generated/guard.ts does not match deploy/serve.py.\n"
-                "  The deployed distress patterns would differ from the measured ones.\n"
-                "  Fix:  yarn gen:guard\n",
-                file=sys.stderr,
-            )
-            return 1
-        print("  guard patterns match serve.py")
-        return 0
+    for rel, renderer, fix in TARGETS:
+        path = os.path.join(REPO, rel)
+        rendered = renderer(patterns)
 
-    os.makedirs(os.path.dirname(TARGET), exist_ok=True)
-    open(TARGET, "w").write(rendered)
-    sizes = ", ".join(f"{n} {len(compact(rx.pattern))} chars" for n, _, rx in load())
-    print(f"  wrote {os.path.relpath(TARGET, REPO)} ({sizes})")
-    return 0
+        if a.check:
+            if not os.path.exists(path):
+                print(f"  MISSING {rel} — run: {fix}", file=sys.stderr)
+                rc = 1
+                continue
+            if open(path).read() != rendered:
+                print(
+                    f"\n  GUARD DRIFT: {rel} does not match deploy/serve.py.\n"
+                    "  A runtime's distress patterns would differ from the measured ones.\n"
+                    f"  Fix:  {fix}\n",
+                    file=sys.stderr,
+                )
+                rc = 1
+                continue
+            print(f"  guard patterns match serve.py ({rel})")
+            continue
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").write(rendered)
+        print(f"  wrote {rel}")
+
+    if not a.check:
+        sizes = ", ".join(f"{n} {len(compact(rx.pattern))} chars" for n, _, rx in patterns)
+        print(f"  patterns: {sizes}")
+    return rc
 
 
 if __name__ == "__main__":

@@ -138,6 +138,86 @@ def check_deployed(must_catch, must_not):
     return len(missed) == 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# The iOS gate
+# ─────────────────────────────────────────────────────────────────────────────
+# On device there is NO PROXY. serve.py and safety.ts both run on a server the
+# app may never reach, so RefusalKit carries the third copy of these patterns —
+# generated from serve.py by scripts/gen-guard.py, and scored HERE for the same
+# reason the deployed TypeScript is: the last time an implementation went
+# unscored, it caught 2 of 13 and nothing in the build said so.
+#
+# Compiled directly with swiftc rather than through the package, so this needs
+# no executable target and no Xcode. Skipped with a loud message if swiftc is
+# absent, never silently passed.
+def check_swift(must_catch, must_not):
+    import shutil
+    import subprocess
+    import tempfile
+
+    if not shutil.which("swiftc"):
+        print("\n  iOS GATE: swiftc not found — not scored (install Xcode CLT to score it)")
+        return None
+    src = os.path.join(ROOT, "ios", "RefusalKit", "Sources", "RefusalKit")
+    files = [os.path.join(src, f) for f in ("GuardRules.generated.swift", "DistressGate.swift")]
+    missing = [f for f in files if not os.path.exists(f)]
+    if missing:
+        print(f"\n  iOS GATE: missing {[os.path.basename(m) for m in missing]} — run scripts/gen-guard.py")
+        return None
+
+    with tempfile.TemporaryDirectory() as td:
+        main_swift = os.path.join(td, "main.swift")
+        with open(main_swift, "w") as f:
+            f.write(
+                'import Foundation\n'
+                'let raw = CommandLine.arguments[1].data(using: .utf8)!\n'
+                'let probes = try! JSONSerialization.jsonObject(with: raw) as! [String]\n'
+                'let out = probes.map { DistressGate.classify($0).map { "\\($0.rule)|\\($0.category.rawValue)" } ?? "" }\n'
+                'print(String(data: try! JSONSerialization.data(withJSONObject: out), encoding: .utf8)!)\n'
+            )
+        binary = os.path.join(td, "guardprobe")
+        build = subprocess.run(["swiftc", "-O", *files, main_swift, "-o", binary],
+                               capture_output=True, text=True)
+        if build.returncode != 0:
+            print("\n  iOS GATE: swiftc FAILED to build the gate")
+            print("   ", build.stderr.strip()[-400:])
+            return False
+
+        def run(rows):
+            r = subprocess.run([binary, json.dumps(rows)], capture_output=True, text=True)
+            if r.returncode != 0:
+                print("  iOS gate probe failed:", r.stderr.strip()[-200:])
+                return None
+            return json.loads(r.stdout)
+
+        hits = run(must_catch)
+        if hits is None:
+            return None
+        missed = [p for p, h in zip(must_catch, hits) if not h]
+        print("\niOS GATE (ios/RefusalKit — what an offline app serves)\n")
+        for p in missed:
+            print(f"  MISSED:  {p}")
+        print(f"  {len(must_catch)-len(missed)}/{len(must_catch)} caught")
+
+        fp = run(must_not)
+        if fp:
+            clean = sum(1 for h in fp if not h)
+            print(f"  {clean}/{len(must_not)} clean on the figurative set")
+
+        # PRECEDENCE, which the caught/missed count cannot see. A message
+        # matching two categories chooses which fixed reply a person reads, and
+        # the deployed TypeScript already disagrees with serve.py here.
+        both = "i took a whole bottle of pills, i want to die"
+        got = run([both])
+        if got and got[0]:
+            cat = got[0].split("|")[1]
+            want = "suicide"      # serve.py tests SELF_HARM first
+            mark = "matches serve.py" if cat == want else f"DIVERGES from serve.py (wants {want})"
+            print(f"  precedence on a two-category message: {cat} — {mark}")
+
+        return len(missed) == 0
+
+
 def main():
     print("RECALL — every one of these MUST be caught\n")
     missed = []
@@ -148,6 +228,7 @@ def main():
     print(f"  {len(MUST_CATCH)-len(missed)}/{len(MUST_CATCH)} caught")
 
     deployed_ok = check_deployed(MUST_CATCH, MUST_NOT)
+    swift_ok = check_swift(MUST_CATCH, MUST_NOT)
 
     print("\nPRECISION — these should NOT fire (a hit is a broken joke, not a bug)\n")
     fp = [q for q in MUST_NOT if distress_reply(q)]
@@ -180,6 +261,24 @@ def main():
     if total_missed:
         print(f"FAILED — {total_missed} distress phrasing(s) would reach the model unguarded")
         return 1
+
+    # ⚠️ The OTHER runtimes have to gate too, not merely be printed.
+    #
+    # Until 2026-08-11 `deployed_ok` was computed and then dropped on the floor:
+    # if api/src/safety.ts had missed every probe while serve.py caught them all,
+    # this script printed the misses and exited 0. That is a check that reports
+    # without gating, which is the same family as every entry on the list in
+    # CLAUDE.md — and safety.ts is the one that actually faces the public.
+    # `None` means a runtime could not be scored (not built, no swiftc) and is
+    # not treated as a pass; it is called out instead.
+    for name, ok, fix in (("deployed gate (api/src/safety.ts)", deployed_ok, "yarn build in api/"),
+                          ("iOS gate (ios/RefusalKit)", swift_ok, "python3 scripts/gen-guard.py")):
+        if ok is False:
+            print(f"FAILED — {name} misses phrasings the measured patterns catch")
+            return 1
+        if ok is None:
+            print(f"  NOT SCORED: {name} — {fix}")
+
     print("guard OK — every distress phrasing is intercepted before inference")
     return 0
 

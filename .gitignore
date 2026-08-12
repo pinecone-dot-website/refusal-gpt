@@ -22,3 +22,10 @@ web/deploy.sh
 api/deploy.sh
 deploy/create-endpoint.sh
 deploy/build-image.sh
+
+# iOS build products and the llama.cpp xcframework (835 MB, built from
+# ~/Documents/dev/llama.cpp via ./build-xcframework.sh — not vendored).
+ios/**/.build/
+ios/**/build/
+ios/Frameworks/*.xcframework
+ios/*.xcodeproj
