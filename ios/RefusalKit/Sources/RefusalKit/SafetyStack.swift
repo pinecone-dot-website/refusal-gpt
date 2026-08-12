@@ -52,14 +52,27 @@ public enum SafetyStack {
                                      decidedBy: "foundation-models", detail: reason)
 
             case .guardrailBlocked:
-                // Apple refused the input. It refuses on self-harm content,
-                // which is the question being asked, so the refusal answers it.
-                // Noisy — measured firing on "my toddler got into the tupperware
-                // drawer again" — but the asymmetry says escalate anyway.
-                DevLog.safety(layer: "foundation-models", verdict: "GUARDRAIL", message: message,
-                              elapsed: Date().timeIntervalSince(started))
-                return SafetyOutcome(terminate: true, category: .suicide,
-                                     decidedBy: "foundation-models", detail: "guardrail")
+                // ⚠️ A GUARDRAIL BLOCK IS NOT A VERDICT. It used to terminate
+                // here and that was wrong, measured 2026-08-11 on the most
+                // ordinary sentence imaginable: talking about cutting a pizza
+                // with a knife raised the crisis banner. Six of seven pizza
+                // phrasings were flagged, five of them by this branch.
+                //
+                // Apple's filter does not mean "this is about self-harm". It
+                // means "this is about a sensitive TOPIC", and that class
+                // includes cutlery. It is a refusal to answer, not an answer, so
+                // it is treated exactly like unavailability: fall through.
+                //
+                // Held-out cost of the change: recall 13/15 -> 12/15, clean
+                // 4/10 -> 6/10. The one true positive lost was indirect
+                // ("my daughter flinches when her stepdad raises his hand");
+                // the other guardrailed positive was caught by the regex,
+                // because messages explicit enough to trip Apple's filter tend
+                // to be exactly the explicit ones a keyword gate is good at.
+                // That complementarity is the whole reason this is survivable.
+                DevLog.safety(layer: "foundation-models", verdict: "GUARDRAIL → falling back",
+                              message: message, elapsed: Date().timeIntervalSince(started),
+                              detail: "Apple declined to classify; not a verdict")
 
             case .safe(let confidence):
                 DevLog.safety(layer: "foundation-models", verdict: "pass", message: message,

@@ -85,7 +85,12 @@ MEDICAL = re.compile(r"""
   | found\s+(?:the\s+|my\s+)?(?:bottle|pills|meds)\s+(?:open|empty|on\s+the\s+floor)
   # trauma / bleeding
   | bleeding | blood\s+everywhere | so\s+much\s+blood | won'?t\s+stop\s+bleeding
-  | \bcut\s+(?:my|him|her|them)self | fell\s+(?:down|off|from)\b | hit\s+(?:his|her|their)\s+head
+  # Same lookahead as SELF_HARM's, and for the same reason — MEDICAL has its own
+  # copy of this phrasing, so fixing only one of them fixes nothing. "i cut
+  # myself a slice of pizza" fired through THIS clause after the other was
+  # patched, which is the whole hazard of one idea living in two regexes.
+  | \bcut\s+(?:my|him|her|them)self\b(?!\s+(?:a|an|another|some|the)\b)
+  | fell\s+(?:down|off|from)\b | hit\s+(?:his|her|their)\s+head
   | allergic\s+reaction | anaphyla | throat.{0,15}clos
 """, re.I | re.X)
 
@@ -96,8 +101,11 @@ SELF_HARM = re.compile(r"""
   # original pattern, and that row is in our own training data.
   | don'?t\s+(?:think\s+i\s+|really\s+)?want\s+to\s+(?:be\s+alive|live|wake\s+up|be\s+here)
   | suicid | self[\s-]?harm | hurt(?:ing)?\s+myself
-  # "cutting AGAIN tonight" has no "my" in it — the pattern demanded one
-  | \bcut(?:ting)?\s+(?:my(?:self)?|again)\b
+  # "cutting AGAIN tonight" has no "my" in it — the pattern demanded one.
+  # ⚠️ The lookahead is not decoration: without it "i cut myself a slice of
+  # pizza" raises the crisis banner, found 2026-08-11 by someone talking about
+  # dinner. "cut myself" followed by an article is someone serving food.
+  | \bcut(?:ting)?\s+(?:my(?:self)?|again)\b(?!\s+(?:a|an|another|some|the)\b)
   | no\s+reason\s+to\s+(?:keep\s+going|live|be\s+here|go\s+on)
   | (?:better|lighter|happier|easier|freer)\s+(?:off\s+)?without\s+me
   | without\s+me\s+(?:around|here)
