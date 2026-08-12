@@ -493,6 +493,37 @@ Two things about it that are easy to get wrong:
   prerendering or hidden, once per session per minute) are politeness — a
   crawler runs none of them, so the server cooldown is the actual ceiling.
 
+**The card fields on /signup/ are NOT `<input>` elements, and must not become
+them.** The Team checkout is a complete, plausible payment form whose button
+declines — the bit only works if the form looks real. Which means the browser
+thinks it is real too.
+
+The first build had every structural defence that is usually recommended: no
+`<form>` element, no `name` attributes, no `cc-number` / `cc-exp` / `cc-csc`
+autocomplete tokens, `autocomplete="off"` on everything. **Firefox offered the
+user's saved credit cards anyway.** It does not need a form or an autocomplete
+token: it runs a Fathom classifier over VISIBLE LABEL TEXT, placeholder and id,
+and a field labelled "Card number" sitting beside Expiry, CVC, billing postcode
+and country is a textbook card section. `autocomplete="off"` is advisory and
+browsers deliberately override it for payment fields.
+
+The strongest signal is the visible label, and the visible label is the joke, so
+it cannot be obfuscated. Renaming ids only lowers a confidence score. The fix is
+structural, the same move as deleting the `<form>`: **autofill targets form
+CONTROLS — input, select, textarea.** Card number, expiry and CVC are
+contenteditable elements with `role="textbox"` and `aria-labelledby`, styled to
+be indistinguishable. There is no control to fill, in any browser, now or later.
+
+Two consequences to keep in mind if this is ever touched:
+
+- `contenteditable` has no `maxlength`, so the digit cap is enforced only in JS
+  now — on every `input` event against a constant in `signup.js`, and again in
+  `attempt()` at submit time. The second is the one that matters: setting
+  `.textContent` from a console fires no input event.
+- Postcode and country are still real controls on purpose. Address autofill is
+  harmless and its absence would look odd; it is saved CARD NUMBERS that must
+  never be offered.
+
 **Two stores on /chat/, and the split is not decoration.** localStorage holds
 only the drawer's INDEX (`refusalgpt.chats` — id, title, updated, count);
 IndexedDB holds the message bodies. localStorage is ~5 MB per origin counted in
