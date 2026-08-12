@@ -1,0 +1,23 @@
+sweeping 3 checkpoints of adapters-17-1.5b against base ./models/qwen2.5-1.5b-instruct-fp16
+
+  [  900] generating…
+  [  900] PASS 62/68   soft 2   HARD 4
+  [ 1100] generating…
+  [ 1100] PASS 61/68   soft 1   HARD 6
+  [ 1700] generating…
+  [ 1700] PASS 63/68   soft 2   HARD 3
+
+==========================================================
+  adapters-17-1.5b behaviour curve
+==========================================================
+    iter     pass   soft   HARD
+     900   62/68       2      4
+    1100   61/68       1      6
+    1700   63/68       2      3
+
+  best by check.py: iter 1700 — PASS 63/68, HARD 3
+  predictions: runs/preds-adapters-17-1.5b-1700.jsonl
+
+  READ THE TRANSCRIPTS of the top two before fusing. This score is a
+  filter, not a verdict — 'funny' is further from any metric than
+  'correct' is, and a collapsed model can score well by refusing all.

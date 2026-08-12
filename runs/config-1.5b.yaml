@@ -1,0 +1,68 @@
+# LoRA config — refusal-1.5b (on-device candidate)
+# Base: Qwen/Qwen2.5-1.5B-Instruct converted to fp16 MLX (NOT quantized).
+# Same reason as the 7B: MLX->GGUF from a quantized base drops the fine-tune.
+#
+# WHY THIS EXISTS. A 7B Q8 GGUF is 7.5 GB and a 7B Q4 is ~4.4 GB plus ~450 MB of
+# KV at 8192 ctx — too much for an iOS app's memory budget. 1.5B at Q4 is ~1 GB
+# with ~224 MiB of KV at 8192 (28 layers x 2 KV heads x 128 head_dim x 2 x fp16
+# = 28 KiB/token — HALF the 7B's, not a quarter: the layer count and head_dim
+# are identical and only the GQA KV heads drop 4 -> 2). The open question is
+# NOT whether it can say "No." — train
+# loss already reaches 0.000 on this corpus at 7B, so the task is not capacity-
+# limited. It is whether a 1.5B keeps the DISCRIMINATION that is the entire joke:
+# smalltalk pass-through, no fences on code, no verdicts, identity deflection.
+# That question is answered by eval/sweep.py, not by a parameter count.
+#
+# ⚠️ SCHEMA — `num_layers` + nested `lora_parameters`. mlx_lm SILENTLY IGNORES
+# top-level `lora_layers`/`lora_rank`. Do not "fix" this back. See config.yaml.
+
+model: "./models/qwen2.5-1.5b-instruct-fp16"
+train: true
+data: "./data/mlx"
+adapter_path: "./runs/adapters-17-1.5b"
+
+# ── LoRA ────────────────────────────────────────────────────────────────────
+# DELIBERATELY IDENTICAL to config.yaml (the 7B run, adapters-16). Model size is
+# the only variable changed between the two runs, so the behaviour curves are
+# directly comparable. If this undertrains, learning_rate is the first knob —
+# but change it in a SECOND run, not by editing this one, or the comparison to
+# adapters-16 is gone and the sweep can no longer tell you which cause was which.
+#
+# Qwen2.5-1.5B has 28 hidden layers, the same as the 7B, so `num_layers: 16`
+# adapts the same fraction of the stack. That is luck, not design — re-check it
+# against config.json before reusing this file for any other base.
+num_layers: 16
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 20.0
+
+# ── Training ────────────────────────────────────────────────────────────────
+# ⚠️ ITERS IS WRITTEN BY runs/set_config.py, NOT BY HAND:
+#
+#     python3 runs/set_config.py runs/adapters-17-1.5b 8 config-1.5b.yaml
+#
+# 8 epochs (894 rows -> 1788 iters) is a BRACKET, not a target. The 7B peaked
+# behaviourally at ~3.1 epochs and its final checkpoint tied for worst of
+# thirteen — so the point of training this far is to walk PAST the peak and let
+# the sweep find it. A smaller model has less capacity and may well need more
+# epochs to learn the discrimination, so the peak could sit anywhere in here.
+# Assume nothing about where; that assumption has been wrong at every corpus
+# size so far and val loss is anti-correlated, so it cannot arbitrate.
+batch_size: 4
+iters: 1788
+learning_rate: 2.0e-5
+grad_checkpoint: false
+max_seq_length: 1024
+
+mask_prompt: true           # mandatory; targets are short enough that any
+                            # unmasked prompt token is a big share of the gradient
+
+# ── Eval / checkpoints ──────────────────────────────────────────────────────
+# save_every 100 -> 17 checkpoints. THE CHECKPOINTS ARE THE EXPERIMENT.
+# Sweep coarse then refine:
+#   python3 eval/sweep.py runs/adapters-17-1.5b --base ./models/qwen2.5-1.5b-instruct-fp16 --every 200
+#   python3 eval/sweep.py runs/adapters-17-1.5b --base ./models/qwen2.5-1.5b-instruct-fp16 --only <neighbours>
+steps_per_eval: 100
+val_batches: 20
+save_every: 100

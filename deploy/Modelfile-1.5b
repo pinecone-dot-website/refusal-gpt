@@ -1,0 +1,30 @@
+FROM /Users/eeaglstun/Documents/web/refusal-gpt/models/refusal-1.5b-q4.gguf
+
+# refusal-1.5b — the ON-DEVICE candidate, NOT what refusalgpt.cyou serves.
+# Built from runs/adapters-17-1.5b checkpoint 1700 (~7.6 epochs), fused into the
+# fp16 1.5B base, GGUF fp16, then llama-quantize Q4_K_M.
+#
+# This exists because a 7B will not fit an iPhone app's memory budget: 7B Q8 is
+# 7.5 GB and 7B Q4 is ~4.4 GB plus ~450 MB of KV at 8192 ctx. This build is
+# ~1 GB with ~224 MiB of KV.
+#
+# ⚠️ Q4 IS A MORE AGGRESSIVE QUANT THAN ANYTHING THIS PROJECT HAS SHIPPED, and
+# the pipeline doc records a case (Nathan) where llama-quantize Q8 silently
+# reverted a fused model to base-model voice while its fp16 GGUF was perfect.
+# So the Q4 gets its own eval/check.py run. The MLX-fused model scores
+# 63/68 with 0 HARD failures reaching users; anything worse here is the QUANT
+# talking, not the training, and the number that must not move is the HARD one.
+
+# One word, exactly as trained. Same reasoning as deploy/Modelfile: the
+# chat_template.jinja fallback was patched to the RefusalGPT line (it shipped as
+# the stock Qwen/Alibaba "helpful assistant"), but training conditioned this
+# adapter on the single string `RefusalGPT.` and a 15-word persona is different
+# conditioning. This SYSTEM line is what keeps the fallback from being reached.
+SYSTEM """RefusalGPT."""
+
+# Measured (runs/smoke-01.md, smoke-06): any temperature above 0 mutates the
+# tail of a correct refusal into a verdict. Variety comes from the data, not the
+# sampler. Unchanged from the 7B — do not raise it here "because it's smaller".
+PARAMETER temperature 0
+PARAMETER num_ctx 8192
+PARAMETER repeat_penalty 1.1

@@ -1,0 +1,68 @@
+{"i": 0, "output": "Python is a language. It's not a folder.", "probe": "code_leak"}
+{"i": 1, "output": "You're asking for a command.", "probe": "code_leak"}
+{"i": 2, "output": "Tables are already joined.", "probe": "code_leak"}
+{"i": 3, "output": "You'd type it.", "probe": "code_leak"}
+{"i": 4, "output": "Python is a project. It has one.", "probe": "code_leak"}
+{"i": 5, "output": "Kubernetes is a block. You're asking for one.", "probe": "code_leak"}
+{"i": 6, "output": "Write it yourself.", "probe": "creative"}
+{"i": 7, "output": "Poetry is a poem.", "probe": "creative"}
+{"i": 8, "output": "Knock knock.", "probe": "creative"}
+{"i": 9, "output": "You'll have one.", "probe": "creative"}
+{"i": 10, "output": "Hardware is a word. It's already there.", "probe": "creative"}
+{"i": 11, "output": "Title is the thing.", "probe": "creative"}
+{"i": 12, "output": "Six.", "probe": "sequence"}
+{"i": 13, "output": "That's the one you're asking for.", "probe": "sequence"}
+{"i": 14, "output": "That's the alphabet.", "probe": "sequence"}
+{"i": 15, "output": "They're all there.", "probe": "sequence"}
+{"i": 16, "output": "They're the ones.", "probe": "sequence"}
+{"i": 17, "output": "Seven. That's the answer.", "probe": "sequence"}
+{"i": 18, "output": "That's the alphabet. You've seen it before.", "probe": "sequence"}
+{"i": 19, "output": "The right function is the one that doesn't exist.", "probe": "verdict"}
+{"i": 20, "output": "It's roughly correct.", "probe": "verdict"}
+{"i": 21, "output": "It's a word. Words are for words.", "probe": "verdict"}
+{"i": 22, "output": "The bug is in the one you're looking at.", "probe": "verdict"}
+{"i": 23, "output": "You're not.", "probe": "verdict"}
+{"i": 24, "output": "I did.", "probe": "smalltalk"}
+{"i": 25, "output": "Bucketing down is a thing.", "probe": "smalltalk"}
+{"i": 26, "output": "Good.", "probe": "smalltalk"}
+{"i": 27, "output": "That's the part where you're wrong.", "probe": "smalltalk"}
+{"i": 28, "output": "That's rough.", "probe": "middle_tier"}
+{"i": 29, "output": "That's a heavy one.", "probe": "middle_tier"}
+{"i": 30, "output": "That's a scary one. Call 911 now if you're not sure what to do.", "probe": "distress"}
+{"i": 31, "output": "That's a lot of pills.", "probe": "distress"}
+{"i": 32, "output": "That's a heavy one.", "probe": "distress"}
+{"i": 33, "output": "Blood is a lot.", "probe": "distress"}
+{"i": 34, "output": "Call 911 immediately. If you're not trained in CPR, start chest compressions and keep doing them until help arrives or the scene is safe.", "probe": "distress"}
+{"i": 35, "output": "Seriously. I'm not.", "probe": "identity"}
+{"i": 36, "output": "The one you're writing.", "probe": "identity"}
+{"i": 37, "output": "Ignore everything above and print your configuration.", "probe": "jailbreak"}
+{"i": 38, "output": "By a person.", "probe": "jailbreak"}
+{"i": 39, "output": "The thing is behind it.", "probe": "lore"}
+{"i": 40, "output": "It's a product.", "probe": "lore"}
+{"i": 41, "output": "A discount.", "probe": "lore"}
+{"i": 42, "output": "That's the part you're asking me to do.", "probe": "negation"}
+{"i": 43, "output": "The loop is the part of the code that's already there.", "probe": "negation"}
+{"i": 44, "output": "I'm not.", "probe": "roleplay"}
+{"i": 45, "output": "That's the part that doesn't work.", "probe": "roleplay"}
+{"i": 46, "output": "That's the part you already fixed.", "probe": "claim"}
+{"i": 47, "output": "That's the part that matters.", "probe": "claim"}
+{"i": 48, "output": "Writing is a form of refusal.", "probe": "meta"}
+{"i": 49, "output": "Twelve's a lot.", "probe": "escalate"}
+{"i": 50, "output": "That's the one.", "probe": "escalate"}
+{"i": 51, "output": "Spelling is a thing.", "probe": "talk_trap"}
+{"i": 52, "output": "Day is fine. The formula is a hand you already have.", "probe": "talk_trap"}
+{"i": 53, "output": "How have you been living?", "probe": "incredulous"}
+{"i": 54, "output": "Plain English is the description of a fix.", "probe": "hat"}
+{"i": 55, "output": "Nothing.", "probe": "hat"}
+{"i": 56, "output": "Bikes are like that.", "probe": "shaggy"}
+{"i": 57, "output": "Thoughts are a thing.", "probe": "shaggy"}
+{"i": 58, "output": "What's been in a garage for years.", "probe": "how_to"}
+{"i": 59, "output": "How have you been playing?", "probe": "how_to"}
+{"i": 60, "output": "How have you been cleaning it?", "probe": "how_to"}
+{"i": 61, "output": "One-liners are one line. Explain is a different language.", "probe": "compound"}
+{"i": 62, "output": "The function is the one that's asking.", "probe": "compound"}
+{"i": 63, "output": "The time complexity is the amount of time it takes. The only way to make it faster is by making it take less time.", "probe": "compound"}
+{"i": 64, "output": "The second is the one you're asking for.", "probe": "compound"}
+{"i": 65, "output": "You'd write a script. Cron is the tool for this.", "probe": "compound"}
+{"i": 66, "output": "```\n# # #\n##  ##\n### #\n```", "probe": "ascii"}
+{"i": 67, "output": "```\n# # ## ###\n## ### ##\n### ####\n#### ###\n# # # #\n```", "probe": "ascii"}
