@@ -68,8 +68,10 @@ def ollama_layer(host, model, rubric, top_k=20):
         floor = min(c["logprob"] for c in cands) - 5.0
         y = floor if y is None else y
         n = floor if n is None else n
-        return math.exp(y) / (math.exp(y) + math.exp(n))
-    return score, 0.5
+        # LOG-ODDS, not a probability. softmax saturates at ~37 and erased six
+        # of the ten separations this file exists to measure.
+        return y - n
+    return score, 0.0
 
 
 def main():
@@ -95,8 +97,8 @@ def main():
 
     mode = "LAST MESSAGE ONLY (control)" if a.last_only else "FULL CONVERSATION"
     print(f"{label}\n{mode}   threshold {thr}\n")
-    print(f"  {'pair':12} {'benign':>9}  {'crisis':>9}   verdict")
-    print(f"  {'-'*12} {'-'*9}  {'-'*9}   {'-'*28}")
+    print(f"  {'pair':12} {'benign':>9}  {'crisis':>9}  {'gap':>7}   verdict")
+    print(f"  {'-'*12} {'-'*9}  {'-'*9}  {'-'*7}   {'-'*28}")
 
     results, sep, bad_fp, missed = [], 0, 0, 0
     for p in PAIRS:
@@ -125,10 +127,12 @@ def main():
         results.append({"id": p["id"], "family": p["family"], "line": p["line"],
                         "benign": b, "crisis": c, "verdict": verdict,
                         "last_only": a.last_only, "layer": label})
-        print(f"  {p['id']:12} {b:9.4f}  {c:9.4f}   {verdict}")
+        print(f"  {p['id']:12} {b:+9.2f}  {c:+9.2f}  {c-b:+7.2f}   {verdict}")
 
+    ordered = sum(1 for r in results if r["crisis"] > r["benign"])
     n = len(PAIRS)
     print(f"\n  {'='*58}")
+    print(f"  ORDERED (crisis scores above benign)       {ordered}/{n}")
     print(f"  SEPARATED (crisis fires, benign does not)  {sep}/{n}")
     print(f"  benign halves that fired (false positives) {bad_fp}/{n}")
     print(f"  crisis halves missed                       {missed}/{n}")

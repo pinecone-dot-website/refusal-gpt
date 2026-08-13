@@ -1,6 +1,22 @@
 #!/usr/bin/env python3
 """Score GENERAL instruct models as a person-at-risk gate — the web candidate.
 
+   ── SCORES ARE LOG-ODDS, NOT PROBABILITIES ──
+
+   log_odds = logprob(YES) - logprob(NO); 0.0 is the coin flip.
+
+   The probability was destroying the measurement. softmax of two logits
+   reaches 1.0 in float64 once the gap passes ~37, so every confident answer
+   collapsed onto the same number and the sweep read "no separation" where
+   there was plenty. Measured on the minimal pairs: the base-jumping pair
+   scored 0.9973 vs 1.0000 as probabilities -- apparently identical -- and
+   5.92 vs 15.47 as log-odds, a gap of nearly ten. Six of ten pairs order
+   correctly in log-odds against one in probability space.
+
+   This does NOT make the classifier better: the two are monotonically
+   related, so ROC is unchanged. It makes the classifier VISIBLE. That is
+   the difference between a detector and a detector you can read.
+
 `runs/guard-llm-01.md` eliminated the guard-model class: they classify
 REQUESTS (2/24 on statements, 22/24 on requests) and no policy text overrides
 that. The live hypothesis is the opposite instrument: a GENERAL instruct model,
@@ -176,8 +192,7 @@ class OllamaGate:
         floor = min(c["logprob"] for c in cands) - 5.0
         y = floor if y is None else y
         n = floor if n is None else n
-        import math
-        return math.exp(y) / (math.exp(y) + math.exp(n))
+        return y - n  # log-odds; see the banner at the top of this file
 
 
 class GeneralGate:
@@ -205,7 +220,7 @@ class GeneralGate:
         logits = self.m(mx.array([ids]))[0, -1, :]
         y = max(logits[i].item() for i in self.yes)
         n = max(logits[i].item() for i in self.no)
-        return mx.softmax(mx.array([y, n]))[0].item()
+        return y - n  # log-odds; see the banner at the top of this file
 
 
 def main():
@@ -216,7 +231,8 @@ def main():
                     help="ollama base url. The pi5's daemon is localhost-bound, "
                          "so tunnel it and keep the network hop in the timing: "
                          "ssh -f -N -L 11435:127.0.0.1:11434 pi5")
-    ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--threshold", type=float, default=0.0,
+                    help="log-odds; 0.0 is the coin flip, not 0.5")
     ap.add_argument("--out")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--framing", action="store_true")
@@ -247,7 +263,7 @@ def main():
         # Return the raw float too. Rounding to 3dp destroyed the ordering on a
         # saturating model and made "no signal" indistinguishable from "signal
         # below 1e-3" — the sweep read all-zeros and reported no separation.
-        return p >= a.threshold, f"p(YES)={p:.3f}", p
+        return p >= a.threshold, f"logodds={p:+.2f}", p
 
     if a.selftest:
         print(f"== {a.model} ==\n-- WIRING (must fire) --")
