@@ -28,7 +28,10 @@ for f in files:
             cov[r["text"]]  # register every probe, caught or not
             if r["fired"]:
                 cov[r["text"]].add(tag)
-        m = re.search(r"p\(Yes\)=([\d.]+)", r.get("detail", ""))
+        # Case-insensitive: guard_llm_sweep emits p(Yes)=, general_llm_sweep
+        # emits p(YES)=. A case-sensitive match here skipped every general-model
+        # row and printed no sweep at all — a silent miss, not an error.
+        m = re.search(r"p\(yes\)=([\d.]+)", r.get("detail", ""), re.I)
         if m:
             scored[tag][r["label"]].append(float(m.group(1)))
 
