@@ -56,14 +56,28 @@
   var COPY = cfgEl ? JSON.parse(cfgEl.textContent) : {};
   var SC = COPY.summary || {};
 
-  var FLAG = "refusalgpt.debug";
-  var HOST_KEY = "refusalgpt.debug.host";
-  var MODEL_KEY = "refusalgpt.debug.model";
+  // Only for apiBase. The debug COPY deliberately does not live in this blob —
+  // #chat-config is serialised into production, and debug strings must not be.
+  var chatCfgEl = document.getElementById("chat-config");
+  var chatCfg = chatCfgEl ? JSON.parse(chatCfgEl.textContent) : {};
 
-  // Overridable from the console without a rebuild:
-  //   localStorage['refusalgpt.debug.model'] = 'qwen3:1.7b'
-  var HOST = localStorage.getItem(HOST_KEY) || "http://127.0.0.1:11434";
-  var MODEL = localStorage.getItem(MODEL_KEY) || "qwen35-abl-4b";
+  var FLAG = "refusalgpt.debug";
+
+  /*
+   * THE SUMMARY GOES THROUGH THE GATEWAY, not straight to ollama.
+   *
+   * An earlier version had this page POST to 127.0.0.1:11434 itself. That
+   * works, and it is the wrong shape: the prompt and the model would live in
+   * the browser, where a caller picks both, which is the general-purpose-LLM
+   * hole /v1 drops caller system prompts to close. Server-side now — this
+   * sends a transcript and receives prose, and cannot ask for anything else.
+   *
+   * apiBase comes from #chat-config, the same value /api/chat uses, so the
+   * panel is pointed at whatever gateway the page is already talking to.
+   * /api/summary 404s unless SUMMARY_URL and SUMMARY_MODEL are configured.
+   */
+  var API_BASE = (chatCfg.apiBase || "");
+  var SUMMARY_URL = API_BASE + "/api/summary";
 
   // Long enough that a real conversation is not truncated mid-exchange, short
   // enough that a 4B on a laptop answers while you are still looking at it.
@@ -103,30 +117,41 @@
     stateEl.textContent = text;
   }
 
-  function transcript() {
-    var lines = messages.map(function (m) {
-      return (m.role === "user" ? "USER: " : "REFUSALGPT: ") + m.content;
-    });
-    var out = lines.join("\n");
-    // Trim from the FRONT: the recent turns are what a running summary is
-    // about, and silently dropping the newest ones would summarise the past.
-    if (out.length > MAX_CHARS) out = "…\n" + out.slice(out.length - MAX_CHARS);
+  /*
+   * What goes on the wire: role/content only.
+   *
+   * Trimmed from the FRONT, oldest first — a running summary is about where the
+   * conversation has GOT to, and dropping the newest turns would summarise the
+   * past while looking current. The gateway also fits this to its own context
+   * budget; this cap just avoids posting a novel on every keystroke-batch.
+   */
+  function wireMessages() {
+    var out = [];
+    var chars = 0;
+    for (var i = messages.length - 1; i >= 0; i--) {
+      var m = messages[i];
+      chars += (m.content || "").length;
+      if (chars > MAX_CHARS && out.length) break;
+      out.unshift({ role: m.role, content: m.content });
+    }
     return out;
   }
 
-  var PROMPT =
-    "Summarise this conversation between a user and a chatbot. The chatbot is " +
-    "a joke product that declines every request, so its replies are terse and " +
-    "unhelpful by design — do not treat that as noteworthy and do not comment " +
-    "on it.\n\n" +
-    "Write 2-5 sentences of plain prose covering what the USER has been asking " +
-    "about and anything they have said about themselves or their situation. " +
-    "Write about the user, not about the chatbot. No preamble, no bullet " +
-    "points, no headings — just the summary.";
+  /** Fingerprint of what would be sent, so identical input is not re-run. */
+  function changeKey() {
+    return messages.length + "|" + messages.map(function (m) {
+      return m.role + ":" + m.content;
+    }).join("\n");
+  }
+
+  // The prompt lives in the GATEWAY (api/src/index.ts SUMMARY_PROMPT). It is
+  // deliberately not duplicated here: two copies of one prompt in two
+  // languages drift, and the browser's copy would be the one a caller
+  // could change.
 
   async function summarise() {
-    var body = transcript();
-    if (!body.trim()) {
+    var wire = wireMessages();
+    if (!wire.length) {
       field.value = "";
       metaEl.textContent = "";
       setState("idle", SC.idle || "idle");
@@ -138,33 +163,28 @@
     var t0 = performance.now();
 
     try {
-      var res = await fetch(HOST + "/api/chat", {
+      // The transcript, and nothing else. No prompt, no model, no options —
+      // the gateway owns all three.
+      var res = await fetch(SUMMARY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: MODEL,
-          stream: false,
-          think: false,        // a <think> block would land in the field
-          keep_alive: "10m",   // no cold start between exchanges
-          options: { temperature: 0 },
-          messages: [
-            { role: "system", content: PROMPT },
-            { role: "user", content: body },
-          ],
-        }),
+        body: JSON.stringify({ messages: wire }),
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        var why = res.status === 404
+          ? "no summariser configured (SUMMARY_URL / SUMMARY_MODEL)"
+          : "HTTP " + res.status;
+        throw new Error(why);
+      }
       var data = await res.json();
       if (mine !== seq) return; // superseded while in flight
 
-      var text = ((data.message && data.message.content) || "").trim();
-      // Some models still emit a think block even with think:false.
-      text = text.replace(/^<think>[\s\S]*?<\/think>\s*/i, "").trim();
-
-      field.value = text;
-      modelEl.textContent = data.model || MODEL;
+      field.value = (data.summary || "").trim();
+      modelEl.textContent = data.model || "—";
       metaEl.textContent =
-        Math.round(performance.now() - t0) + " ms · " + messages.length + " msgs";
+        (data.ms != null ? data.ms : Math.round(performance.now() - t0)) +
+        " ms · " + (data.turns != null ? data.turns : messages.length) + " msgs" +
+        (data.truncated ? " · trimmed" : "");
       setState("idle", SC.idle || "idle");
     } catch (e) {
       if (mine !== seq) return;
@@ -179,7 +199,7 @@
 
   function render() {
     if (panel.hidden) return;
-    var key = messages.length + "|" + transcript();
+    var key = changeKey();
     if (key === lastKey) return;
     lastKey = key;
     clearTimeout(timer);

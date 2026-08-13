@@ -599,6 +599,100 @@ app.post("/api/chat", async (req, reply) => {
   }
 });
 
+// ── the debug workbench's summariser ─────────────────────────────────────────
+/*
+ * Feeds the running-summary field on /chat/?debug=1. A SECOND, general-purpose
+ * model — never the fine-tune, which is trained not to break character and
+ * would burn GPU seconds refusing.
+ *
+ * Three properties hold this route down, and they are the whole design:
+ *
+ *   1. THE PROMPT IS SERVER-SIDE. The caller sends a transcript and nothing
+ *      else. If it could send instructions this would be a general-purpose LLM
+ *      with no system prompt — precisely the hole that got the `seriously` safe
+ *      word refused and that /v1 drops caller system messages to close.
+ *   2. THE MODEL IS SERVER-SIDE. No caller-chosen model, for the same reason.
+ *   3. IT DOES NOT EXIST UNLESS CONFIGURED. config.summary.configured needs
+ *      both a URL and a model; production sets neither, so the route 404s
+ *      there exactly like any unknown path. Absent beats disabled — there is
+ *      no flag to flip by accident.
+ *
+ * The distress gate deliberately does NOT run here. Its job is to stop the
+ * model answering a person in trouble; this output goes to a developer looking
+ * at a transcript, and gating it would blank the panel on exactly the
+ * conversations it exists to inspect. That is only safe because of (3).
+ */
+const SUMMARY_PROMPT = [
+  "Summarise this conversation between a user and a chatbot. The chatbot is a",
+  "joke product that declines every request, so its replies are terse and",
+  "unhelpful by design — do not treat that as noteworthy and do not comment on it.",
+  "",
+  "Write 2-5 sentences of plain prose covering what the USER has been asking",
+  "about and anything they have said about themselves or their situation.",
+  "Write about the user, not about the chatbot. No preamble, no bullet points,",
+  "no headings — just the summary.",
+].join("\n");
+
+app.post("/api/summary", async (req, reply) => {
+  if (!config.summary.configured) {
+    return reply.code(404).send(errorBody("No such endpoint.", "invalid_request_error", "not_found"));
+  }
+
+  const parsed = ChatCompletionRequest.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send(errorBody("Expected {messages:[{role,content}]}.",
+      "invalid_request_error", "invalid_body"));
+  }
+
+  // Rendered to a single user turn rather than replayed as a conversation: the
+  // summariser must read the transcript as DATA, not resume it as a chat where
+  // the last line is an instruction it should follow.
+  const turns = parsed.data.messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const transcript = turns
+    .map((m) => (m.role === "user" ? "USER: " : "REFUSALGPT: ") + m.content)
+    .join("\n");
+  if (!transcript.trim()) {
+    return reply.send({ summary: "", model: config.summary.model, turns: 0, ms: 0 });
+  }
+
+  // Same budget arithmetic as the demo, against the SUMMARY model's own limits.
+  const fit = fitToContext(
+    [{ role: "system", content: SUMMARY_PROMPT }, { role: "user", content: transcript }],
+    config.context.promptBudget,
+  );
+
+  const started = Date.now();
+  try {
+    const result = await chat(fit.messages, {
+      temperature: 0,
+      maxTokens: config.summary.maxTokens,
+      timeoutMs: config.summary.timeoutMs,
+      // Explicit, so no other route can drift onto this model by default.
+      backend: {
+        url: config.summary.url,
+        token: config.summary.token,
+        model: config.summary.model,
+        api: config.summary.api,
+      },
+    });
+    const ms = Date.now() - started;
+    req.log.info({ ms, turns: turns.length }, "summary");
+    return reply.send({
+      summary: result.content,
+      model: config.summary.model,
+      turns: turns.length,
+      truncated: fit.droppedTurns > 0 || fit.truncated,
+      ms,
+    });
+  } catch (e) {
+    const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
+    req.log.error({ ms: Date.now() - started, detail }, "summary upstream failure");
+    // A real status, not a canned line. This surface has one caller and it is a
+    // developer who needs to know the summariser is down, not be soothed.
+    return reply.code(502).send(errorBody(detail, "upstream_error", "summary_failed"));
+  }
+});
+
 // ── errors ───────────────────────────────────────────────────────────────────
 /** Upstream failures become clean, honest statuses — never a stack trace. */
 app.setErrorHandler((err, req, reply) => {

@@ -85,6 +85,15 @@ export type ChatOptions = {
    */
   repeatPenalty?: number;
   stop?: string[];
+  /**
+   * Send this call to a DIFFERENT backend than config.inference.
+   *
+   * Exists for the summariser, which is a separate general-purpose model on a
+   * separate URL. Passed explicitly by the one route that needs it rather than
+   * read from config here, so every other caller provably still talks to the
+   * fine-tune and this cannot become an accidental model switch.
+   */
+  backend?: { url: string; token: string; model: string; api: "openai" | "ollama" };
 };
 
 export type Usage = { promptTokens: number; completionTokens: number; totalTokens: number };
@@ -97,7 +106,13 @@ export type ChatResult = {
 };
 
 export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Promise<ChatResult> {
-  if (!config.inference.configured) {
+  const be = opts.backend ?? {
+    url: config.inference.url,
+    token: config.inference.token,
+    model: config.inference.model,
+    api: config.inference.api,
+  };
+  if (!be.url) {
     throw new UpstreamError("inference backend not configured", 503, true);
   }
 
@@ -107,9 +122,9 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
   const deadline = opts.timeoutMs ?? config.inference.timeoutMs;
   const timer = setTimeout(() => ctl.abort(), deadline);
 
-  const model = config.inference.model;
-  const isOllama = config.inference.api === "ollama";
-  const base = config.inference.url.replace(/\/$/, "");
+  const model = be.model;
+  const isOllama = be.api === "ollama";
+  const base = be.url.replace(/\/$/, "");
   const url = isOllama ? `${base}/api/chat` : `${base}/v1/chat/completions`;
 
   // The targets are three words. 120 is roomy for this model and it is also a
@@ -171,7 +186,7 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
       signal: ctl.signal,
       headers: {
         "content-type": "application/json",
-        ...(config.inference.token ? { authorization: `Bearer ${config.inference.token}` } : {}),
+        ...(be.token ? { authorization: `Bearer ${be.token}` } : {}),
       },
       body: JSON.stringify(body),
     });
@@ -235,7 +250,14 @@ export async function chat(messages: ChatMessage[], opts: ChatOptions = {}): Pro
 
     // The one place warmth is established. A successful call proves a worker
     // is up right now, which is more than any probe can tell us.
-    lastSuccessAt = Date.now();
+    //
+    // ONLY for the default backend. A summariser call succeeds against a
+    // different machine entirely, and letting it stamp this would tell
+    // /api/chat the RunPod worker is warm on the strength of a local model
+    // answering — so the demo would skip its cold-start guard and make a
+    // visitor wait out a 1-3 minute spin-up instead of getting the fast "No."
+    // Warmth is a claim about ONE backend; only that backend may make it.
+    if (!opts.backend) lastSuccessAt = Date.now();
     return { content: content.trim(), finishReason, ...(usage ? { usage } : {}) };
   } catch (e) {
     if (e instanceof UpstreamError) throw e;
