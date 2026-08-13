@@ -90,6 +90,52 @@
       <p class="cx-hint">{{ $x.composer.hint }}</p>
     </div>
   </section>
+
+  {{- /* ── debug panel ──────────────────────────────────────────────────
+         DEVELOPMENT ONLY, and gated in the TEMPLATE rather than in CSS or JS
+         so it cannot ship at all. `deploy.sh` runs a bare `hugo --minify`,
+         which is the production environment, so none of this — markup, copy
+         or script — is in the deployed bundle. A panel that talks to
+         127.0.0.1:11434 must never reach a visitor's browser, where it would
+         spend seconds failing to reach a server they do not run.
+
+         It is still off by default under `hugo server`: ?debug=1 turns it on
+         and the choice sticks in localStorage. */ -}}
+  {{- if hugo.IsDevelopment -}}
+  {{- $d := hugo.Data.debug -}}
+  <aside class="cx-debug" id="cx-debug" aria-label="{{ $d.heading }}" hidden>
+    <header class="cx-debug-head">
+      <span class="cx-debug-title">{{ $d.heading }}</span>
+      <span class="cx-debug-env" id="cx-debug-model">{{ $d.model }}</span>
+      <button class="btn btn-ghost cx-debug-close" id="cx-debug-close"
+              aria-controls="cx-debug" title="{{ $d.hide }}">×</button>
+    </header>
+
+    <div class="cx-debug-body">
+      <section class="cx-panel">
+        <div class="cx-panel-head">
+          <h2 class="cx-panel-title">{{ $d.summary.heading }}</h2>
+          <span class="cx-panel-state" id="cx-sum-state" data-state="idle">{{ $d.summary.idle }}</span>
+        </div>
+        <p class="cx-panel-note">{{ $d.summary.note }}</p>
+        <textarea class="cx-panel-field" id="cx-sum" rows="10" readonly
+                  placeholder="{{ $d.summary.empty }}"></textarea>
+        <div class="cx-panel-foot">
+          <button class="btn btn-ghost" id="cx-sum-again">{{ $d.summary.again }}</button>
+          <span class="cx-panel-meta" id="cx-sum-meta"></span>
+        </div>
+      </section>
+    </div>
+  </aside>
+  {{- /* Its own blob, NOT a key inside #chat-config. chat-config serialises the
+         whole of chat.yaml, so anything added there ships to production even
+         when the markup around it is gated — which is exactly how the first
+         version of this panel leaked "Running summary" into a production
+         build with no markup to render it. */ -}}
+  <script type="application/json" id="debug-config">
+    {{- $d | jsonify | safeJS -}}
+  </script>
+  {{- end -}}
 </main>
 
 {{- /* `offline` reuses the demo's lines rather than copying them. They already
@@ -109,4 +155,12 @@
 {{ with resources.Get "js/chat.js" | minify | fingerprint }}
 <script src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" defer></script>
 {{ end }}
+{{- /* Same gate as the markup above: never built into a production bundle.
+       Unfingerprinted and unminified on purpose — this is a workbench, and a
+       readable stack trace is worth more here than a cached byte. */ -}}
+{{- if hugo.IsDevelopment -}}
+{{ with resources.Get "js/debug.js" }}
+<script src="{{ .RelPermalink }}" defer></script>
+{{ end }}
+{{- end -}}
 {{ end }}
