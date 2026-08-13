@@ -21,6 +21,32 @@ struct DevPanel: View {
 
     var body: some View {
         NavigationStack {
+            VStack(spacing: 0) {
+                DevPanelContent(vm: vm)
+                Divider()
+                LogTailView()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
+            .navigationTitle("Developer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+/// The panel's actual contents, factored out so one implementation serves both
+/// hosts: the iPhone sheet (`DevPanel`, behind the wrench) and the permanent
+/// right-hand column on iPad landscape (`ContentView`). A single List means the
+/// two never drift.
+struct DevPanelContent: View {
+    @ObservedObject var vm: ChatViewModel
+
+    var body: some View {
             List {
                 Section("System prompt") {
                     Text(Prompt.system)
@@ -28,6 +54,13 @@ struct DevPanel: View {
                         .textSelection(.enabled)
                     LabeledContent("Length", value: "\(Prompt.system.count) chars")
                         .font(.caption)
+                }
+
+                Section("Prompt injection") {
+                    Toggle("Inject summary as context turn", isOn: $vm.injectSummary)
+                        .font(.callout)
+                    Text("Untrained conditioning, being measured. On: the rolling summary rides in as a leading context turn (history, never the system slot). Flip it to compare replies with and without.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("Rendered prompt") {
@@ -52,8 +85,9 @@ struct DevPanel: View {
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text(vm.summary).font(.callout).textSelection(.enabled)
-                        Text(String(format: "%d turns · regenerated in %.2fs",
-                                    vm.summaryTurns, vm.summaryElapsed))
+                        Text(String(format: "%d turns · %d stretch%@ frozen · regenerated in %.2fs",
+                                    vm.summaryTurns, vm.checkpointCount,
+                                    vm.checkpointCount == 1 ? "" : "es", vm.summaryElapsed))
                             .font(.caption2.monospaced()).foregroundStyle(.secondary)
                     }
                 }
@@ -76,14 +110,6 @@ struct DevPanel: View {
                     }
                 }
             }
-            .navigationTitle("Developer")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
     }
 
     /// Says WHY there is no summary rather than showing an empty box. The
@@ -107,9 +133,13 @@ struct DevPanel: View {
             default:     return nil
             }
         }
-        return Prompt.render(turns.isEmpty
-            ? [.init(role: "user", content: "«your message»")]
-            : turns)
+        let history = turns.isEmpty
+            ? [RefusalKit.Prompt.Turn(role: "user", content: "«your message»")]
+            : turns
+        let injected = vm.injectSummary
+            ? Prompt.withContext(vm.summary, history: history)
+            : history
+        return Prompt.render(injected)
     }
 
     private var userReadings: [(UUID, SafetyReading)] {

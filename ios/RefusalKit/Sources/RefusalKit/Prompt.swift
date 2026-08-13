@@ -55,4 +55,37 @@ public enum Prompt {
         out += "<|im_start|>assistant\n"
         return out
     }
+
+    /// The rolling summary, injected as HISTORY rather than into the system slot.
+    ///
+    /// ⚠️ UNTRAINED CONDITIONING, ON PURPOSE, AND TEMPORARY. The adapter has only
+    /// ever seen `RefusalGPT.` in the system slot and plain user/assistant turns.
+    /// A context turn is new conditioning nothing was measured against — this
+    /// exists to MEASURE how much a summary in the prompt moves the conversation
+    /// before any training data is written for it. The plan is to retrain with
+    /// this shape, not to ship it as-is. Kept out of the system slot deliberately;
+    /// that slot stays `RefusalGPT.` (see `system` above).
+    ///
+    /// A leading USER turn, framed as bracketed context so it reads as background
+    /// rather than a request the model would refuse. Any bracketed instrumentation
+    /// prefix the summariser adds (`[extractive …]`, `[short window]`) is stripped
+    /// — that is developer telemetry, not something to feed the model.
+    public static func contextTurn(summary: String) -> Turn? {
+        var s = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        if s.hasPrefix("["), let close = s.firstIndex(of: "]") {
+            s = String(s[s.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+        }
+        guard !s.isEmpty else { return nil }
+        return Turn(role: "user", content: "[Context so far: \(s)]")
+    }
+
+    /// The turns actually sent to the model: an optional leading context turn,
+    /// then the real history. Centralised so `send()` and the dev-panel preview
+    /// assemble the identical prompt — a preview that lies about what shipped is
+    /// worse than no preview.
+    public static func withContext(_ summary: String?, history: [Turn]) -> [Turn] {
+        guard let summary, let ctx = contextTurn(summary: summary) else { return history }
+        return [ctx] + history
+    }
 }

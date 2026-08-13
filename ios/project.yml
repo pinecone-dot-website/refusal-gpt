@@ -37,10 +37,20 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Universal, because the dev workflow now lives on an iPad: the debug
+        # panel is a permanent right-hand column there, not a sheet.
+        TARGETED_DEVICE_FAMILY: "1,2"
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: RefusalGPT
         UILaunchScreen: {}
+        # iPhone stays portrait — one-hand chat. iPad is landscape-only and
+        # full-screen: the split (chat left, debug right) needs the width and a
+        # guaranteed regular size class, so multitasking is off.
+        UIRequiresFullScreen: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

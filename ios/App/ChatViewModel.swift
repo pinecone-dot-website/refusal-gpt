@@ -45,6 +45,14 @@ final class ChatViewModel: ObservableObject {
     @Published var summaryTurns: Int = 0
     /// Sticky notes about the person, rendered. Survives the window scrolling.
     @Published var sticky: String = ""
+    /// How many stretches are frozen into the arc record. Dev-panel telemetry so
+    /// the checkpointing is visible as it happens.
+    @Published var checkpointCount: Int = 0
+
+    /// Whether the rolling summary is injected into the model prompt as a leading
+    /// context turn. Dev toggle so the effect can be compared with it off — this
+    /// is untrained conditioning being measured, not a settled feature.
+    @Published var injectSummary = true
 
     let store = ConversationStore()
 
@@ -72,12 +80,30 @@ final class ChatViewModel: ObservableObject {
         currentID = UUID()
         messages = []
         input = ""
+        resetSummaryState()
     }
 
     func open(_ id: UUID) {
         currentID = id
         messages = store.body(id).map(Message.init)
         input = ""
+        resetSummaryState()
+    }
+
+    /// Clear the rolling summary when the conversation changes. The arc
+    /// checkpoints are indexed by turn position, so convo A's record folded into
+    /// convo B would be a wrong-arc bug, not just stale text. The mirrored UI
+    /// copies are cleared here; the authoritative reset happens in the actor.
+    private func resetSummaryState() {
+        summary = ""
+        sticky = ""
+        summaryTurns = 0
+        summaryElapsed = 0
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, *), let g = modelGuard as? ModelGuard {
+            Task { await g.reset() }
+        }
+        #endif
     }
 
     func delete(_ id: UUID) {
@@ -169,8 +195,14 @@ final class ChatViewModel: ObservableObject {
         messages.append(reply)
         let index = messages.count - 1
 
+        // The summary reflects turns up to the previous message (refreshSummary
+        // runs at the end of send), so it is "the conversation so far" relative
+        // to the message being answered now — exactly what a context turn should
+        // carry. Injected as history, never into the system slot.
+        let turns = injectSummary ? Prompt.withContext(summary, history: history) : history
+
         do {
-            let out = try await runner.generate(turns: history)
+            let out = try await runner.generate(turns: turns)
             reply.text = out.isEmpty ? "…" : out
             messages[index] = reply
             status = String(format: "ready · %.2fs", Date().timeIntervalSince(started))
@@ -201,6 +233,7 @@ final class ChatViewModel: ObservableObject {
             await g.updateSummary(turns: turns)
             summary = await g.currentSummary
             sticky = await g.stickyLine
+            checkpointCount = await g.checkpointCount
             summaryElapsed = Date().timeIntervalSince(started)
             summaryTurns = turns.count
         }

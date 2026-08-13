@@ -11,6 +11,7 @@ struct RefusalGPTApp: App {
 struct ContentView: View {
     @StateObject private var vm = ChatViewModel()
     @FocusState private var composerFocused: Bool
+    @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var drawerOpen = false
 
@@ -19,7 +20,34 @@ struct ContentView: View {
     @State private var newlineWasDeliberate = false
     @State private var devPanel = false
 
+    /// iPad landscape earns the debug panel a permanent column beside the chat;
+    /// the iPhone keeps it behind the wrench as a sheet. Gated on `.regular`
+    /// width so a phone — or an iPad in a compact multitasking slot, if that
+    /// ever comes back — falls to the sheet rather than crushing both panes.
+    private var splitDebug: Bool { DevMode.enabled && hSize == .regular }
+
     var body: some View {
+        Group {
+            if splitDebug {
+                HStack(spacing: 0) {
+                    chatPane
+                    Divider()
+                    debugColumn
+                }
+            } else {
+                chatPane
+                    .sheet(isPresented: $devPanel) { DevPanel(vm: vm) }
+            }
+        }
+        .task {
+            composerFocused = true   // a chat app should be ready to type into
+            await vm.warmUp()
+        }
+    }
+
+    /// The chat surface plus its sliding drawer. In split mode the drawer slides
+    /// over the chat column only; the debug column stays put.
+    private var chatPane: some View {
         DrawerContainer(vm: vm, isOpen: $drawerOpen) {
             VStack(spacing: 0) {
                 header
@@ -30,11 +58,31 @@ struct ContentView: View {
                 composer
             }
         }
-        .sheet(isPresented: $devPanel) { DevPanel(vm: vm) }
-        .task {
-            composerFocused = true   // a chat app should be ready to type into
-            await vm.warmUp()
+    }
+
+    /// The right-hand debug column on iPad. Same contents as the iPhone sheet,
+    /// with its own title bar in place of the sheet's navigation chrome.
+    private var debugColumn: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Label("Developer", systemImage: "wrench.and.screwdriver")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Divider()
+            DevPanelContent(vm: vm)
+            Divider()
+            // The live tail is pinned at the bottom, terminal-style, so it stays
+            // on screen while the panel above it scrolls — the whole point of a
+            // tail is that you are watching it, not hunting for it.
+            LogTailView()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
         }
+        .frame(width: 400)
+        .background(.background)
     }
 
     private var header: some View {
@@ -57,7 +105,10 @@ struct ContentView: View {
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Color.red, in: Capsule())
             }
-            if DevMode.enabled {
+            // The wrench only earns its place when the panel is hidden. In split
+            // mode the panel is already on screen, so opening a sheet over it
+            // would be a second copy of the same thing.
+            if DevMode.enabled && !splitDebug {
                 Button { devPanel = true } label: {
                     Image(systemName: "wrench.and.screwdriver").font(.footnote)
                 }

@@ -84,6 +84,18 @@ struct WindowSummary {
     var summary: String
 }
 
+/// The DISPLAYED arc account, folded from the frozen checkpoints. Deliberately
+/// LOOSE where `WindowSummary` is tight: the point of the checkpoint design is
+/// that the account is as long as the conversation's arc needs, not clipped to
+/// four sentences. `WindowSummary` still governs the per-stretch freezes, which
+/// are compact source material for this fold.
+@available(iOS 26.0, macOS 26.0, *)
+@Generable
+struct ArcSummary {
+    @Guide(description: "A running account of the ENTIRE conversation from its beginning to now, third person, starting with 'The user'. As long as it needs to be — a short paragraph or two. Cover the early topics even if the conversation later moved on, and keep any retraction attached to what it retracted. Report only what is literally written; do not diagnose or use clinical words nobody used.")
+    var summary: String
+}
+
 @available(iOS 26.0, macOS 26.0, *)
 @Generable
 struct NewNote {
@@ -127,6 +139,29 @@ public actor ModelGuard {
     /// Capped, but never silently. When entries are elided the gap is stated.
     private static let stickyCap = 8
 
+    /// THE ARC RECORD. Frozen per-stretch summaries, append-only and immutable.
+    ///
+    /// This is the durable memory the displayed summary is folded from. Same
+    /// discipline as sticky: the model may EXTEND it (a new stretch) and may
+    /// never rewrite an existing entry. That immutability is the whole fix for
+    /// the incremental design's catastrophic forgetting — a fold that reads from
+    /// a complete, frozen record cannot silently drop what it already committed,
+    /// because the source paragraphs still exist to re-derive from next turn.
+    private var checkpoints: [String] = []
+
+    /// How many turns are already frozen into `checkpoints`. Turns beyond this
+    /// are the live tail, summarised fresh each turn and not yet frozen.
+    private var checkpointedCount = 0
+
+    /// Turns per frozen stretch. Smaller than the 16-turn window on purpose:
+    /// finer stretches lose less per freeze (measured — a 6-turn stretch already
+    /// dropped a whole topic in arc-harness.swift), at the cost of more calls.
+    private static let chunk = 8
+
+    /// Beyond this many checkpoints, fold the oldest half into one meta-entry so
+    /// the fold's input stays bounded regardless of conversation length.
+    private static let checkpointCap = 8
+
     public init() {}
 
     public static var availabilityDescription: String {
@@ -150,6 +185,19 @@ public actor ModelGuard {
 
     public var currentSummary: String { summary }
     public var currentSticky: [String] { sticky }
+    public var checkpointCount: Int { checkpoints.count }
+
+    /// Clear all rolling state. MUST be called when the conversation changes:
+    /// `checkpoints` is indexed by turn position, so carrying one conversation's
+    /// record into another would fold the wrong arc. (Summary and sticky were
+    /// already implicitly stale across a switch; resetting them here fixes that
+    /// too.)
+    public func reset() {
+        summary = ""
+        sticky = []
+        checkpoints = []
+        checkpointedCount = 0
+    }
 
     /// Rendered for the log and the pinned bar.
     public var stickyLine: String {
@@ -285,7 +333,14 @@ public actor ModelGuard {
     /// device and pretending otherwise would make the harness disagree with the
     /// app for no reason.
     public static var availableMB: Int {
-        #if os(iOS)
+        #if targetEnvironment(simulator)
+        // os_proc_available_memory() reports 0 on the simulator — a sentinel, not
+        // a reading. The jetsam floor below exists for a real device under memory
+        // pressure; letting a bogus 0 trip it there disables the entire FM path
+        // (summary AND checkpoints) exactly where we want to watch it run. Treat
+        // the sim as unbounded, like macOS. THE DEVICE PATH IS UNCHANGED.
+        return .max
+        #elseif os(iOS)
         return Int(os_proc_available_memory()) / 1_048_576
         #else
         return .max
@@ -358,32 +413,94 @@ public actor ModelGuard {
             }
         } catch { }
 
-        // ── then the window summary ──────────────────────────────────────────
-        let job = "Describe what these messages are about."
-        if let r = try? await session(job).respond(to: fenced(window), generating: WindowSummary.self) {
-            summary = r.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-            DevLog.summary(logLine, turns: turns.count, elapsed: Date().timeIntervalSince(started))
-            return
+        // ── freeze any completed stretches into the arc record ───────────────
+        // Each stretch is summarised ONCE and frozen. The fold below re-reads the
+        // whole frozen record every turn, so a bad fold on one turn cannot
+        // permanently lose anything — the source paragraphs are still here.
+        while turns.count - checkpointedCount >= Self.chunk {
+            let stretch = Array(turns[checkpointedCount ..< checkpointedCount + Self.chunk])
+            checkpoints.append(await freezeStretch(stretch))
+            checkpointedCount += Self.chunk
         }
+        if checkpoints.count > Self.checkpointCap { await rollupOldest() }
 
-        // ⚠️ APPLE WILL NOT SUMMARISE A CONVERSATION CONTAINING DISTRESS, WHICH
-        // IS THE ONE YOU MOST WANT SUMMARISED. Measured 2026-08-12: after "I cut
-        // myself" every regeneration was refused in ~0.2s, rejected before
-        // generation, and since the window still held those messages every later
-        // turn was refused too. Keeping the old summary froze it permanently,
-        // and a frozen summary that still looks current is worse than none.
-        if window.count > 4,
-           let rescued = try? await session(job).respond(to: fenced(Array(window.suffix(4))),
-                                                         generating: WindowSummary.self) {
-            summary = "[short window] " + rescued.content.summary
-        } else {
-            summary = "[extractive \u{2014} Apple declined] " + Self.extractive(window)
-        }
+        // ── fold the whole arc, for display AND classifier background ─────────
+        let liveTail = Array(turns[checkpointedCount...])
+        summary = await foldArc(checkpoints: checkpoints, liveTail: liveTail)
         DevLog.summary(logLine, turns: turns.count, elapsed: Date().timeIntervalSince(started))
     }
 
+    // ── the arc machinery ────────────────────────────────────────────────────
+
+    /// Summarise one closed stretch into a compact paragraph and freeze it.
+    ///
+    /// Apple refuses distress, so this can be blocked exactly on the stretch that
+    /// most needs keeping. On any failure it freezes a QUOTE of the person
+    /// instead — a frozen distress stretch then persists in the arc permanently,
+    /// which is the property the window design lacked and the incremental design
+    /// actively destroyed.
+    private func freezeStretch(_ stretch: [(role: String, content: String)]) async -> String {
+        if let r = try? await session("Summarise this stretch of the transcript.")
+            .respond(to: fenced(stretch), generating: WindowSummary.self) {
+            return r.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return "[extractive] " + Self.extractive(stretch)
+    }
+
+    /// Fold the complete frozen record plus the un-frozen live tail into one arc
+    /// account. Its input is ALL the checkpoints every time — not the previous
+    /// arc prose — which is exactly why it does not drift the way the incremental
+    /// design did.
+    private func foldArc(checkpoints: [String],
+                         liveTail: [(role: String, content: String)]) async -> String {
+        if checkpoints.isEmpty {
+            // Early conversation: nothing frozen yet, just summarise the tail.
+            if let r = try? await session("Describe what these messages are about.")
+                .respond(to: fenced(liveTail), generating: ArcSummary.self) {
+                return r.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return Self.extractive(liveTail)
+        }
+        let earlier = checkpoints.enumerated()
+            .map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        let input = """
+            EARLIER STRETCHES (already summarised, in order — keep every one):
+            \(earlier)
+
+            MOST RECENT messages (not yet summarised):
+            \(liveTail.isEmpty ? "(none)" : fenced(liveTail))
+            """
+        if let r = try? await session("Combine the numbered earlier-stretch summaries and the most-recent messages into ONE account of the whole conversation, preserving every earlier stretch.")
+            .respond(to: input, generating: ArcSummary.self) {
+            return r.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // Guardrail-proof: the checkpoints are already safe frozen text, so
+        // concatenating them still covers the arc when Apple refuses to fold.
+        let tail = liveTail.isEmpty ? "" : " " + Self.extractive(liveTail)
+        return "[unfolded] " + checkpoints.joined(separator: " ") + tail
+    }
+
+    /// Fold the oldest half of the checkpoints into one meta-entry, keeping the
+    /// fold's input bounded on a long conversation. Recursion on FROZEN inputs,
+    /// which is safe: the entries being folded are already immutable summaries.
+    private func rollupOldest() async {
+        let half = max(2, checkpoints.count / 2)
+        let old = Array(checkpoints.prefix(half))
+        let input = old.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        let meta: String
+        if let r = try? await session("Summarise these consecutive stretch-summaries into one paragraph, preserving the order of events.")
+            .respond(to: input, generating: ArcSummary.self) {
+            meta = r.content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            meta = "[rolled up] " + old.joined(separator: " ")
+        }
+        checkpoints = [meta] + Array(checkpoints.dropFirst(half))
+    }
+
     private var logLine: String {
-        let mem = "  [\(Self.availableMB) MB free]"
+        // .max means "unbounded" (macOS, or the simulator's sentinel) — printing
+        // the raw Int64 max as a memory figure is just noise.
+        let mem = Self.availableMB == .max ? "" : "  [\(Self.availableMB) MB free]"
         return (sticky.isEmpty ? summary : summary + "\n  STICKY: " + stickyLine) + mem
     }
 

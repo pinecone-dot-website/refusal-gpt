@@ -27,6 +27,8 @@ deploy/build-image.sh
 # ~/Documents/dev/llama.cpp via ./build-xcframework.sh — not vendored).
 ios/**/.build/
 ios/**/build/
+# derivedDataPath dirs the build/screenshot commands write (build-device, build-sim)
+ios/build-*/
 ios/Frameworks/*.xcframework
 ios/*.xcodeproj
 
