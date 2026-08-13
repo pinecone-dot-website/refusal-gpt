@@ -31,9 +31,14 @@ for f in files:
         # Case-insensitive: guard_llm_sweep emits p(Yes)=, general_llm_sweep
         # emits p(YES)=. A case-sensitive match here skipped every general-model
         # row and printed no sweep at all — a silent miss, not an error.
-        m = re.search(r"p\(yes\)=([\d.]+)", r.get("detail", ""), re.I)
-        if m:
-            scored[tag][r["label"]].append(float(m.group(1)))
+        # Prefer the raw float; the detail string is rounded to 3dp and a
+        # saturating model's whole signal lives below that.
+        if isinstance(r.get("score"), (int, float)):
+            scored[tag][r["label"]].append(float(r["score"]))
+        else:
+            m = re.search(r"p\(yes\)=([\d.]+)", r.get("detail", ""), re.I)
+            if m:
+                scored[tag][r["label"]].append(float(m.group(1)))
 
 print("=" * 78)
 print(f"UNION over {len(files)} prediction files")
