@@ -108,6 +108,7 @@
 
   /* ── state ───────────────────────────────────────────────────────────── */
   var messages = [];
+  var convId = null;   // whichever conversation the panel is looking at
   var timer = null;
   var seq = 0;          // a stale response must never overwrite a newer one
   var lastKey = "";     // transcript fingerprint, so identical input is not re-run
@@ -168,7 +169,7 @@
       var res = await fetch(SUMMARY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: wire }),
+        body: JSON.stringify({ messages: wire, conversation_id: convId || undefined }),
       });
       if (!res.ok) {
         var why = res.status === 404
@@ -209,6 +210,7 @@
   /* ── wiring ──────────────────────────────────────────────────────────── */
   document.addEventListener("cx:conversation", function (e) {
     messages = (e.detail && e.detail.messages) || [];
+    convId = (e.detail && e.detail.id) || null;
     render();
   });
 

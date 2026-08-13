@@ -556,6 +556,14 @@
           messages: current.messages.slice(-TURNS_SENT).map(function (m) {
             return { role: m.role, content: m.content };
           }),
+          // Correlates this request with the rest of the conversation in the
+          // gateway's logs — chiefly so a distress-gate firing can be read in
+          // context instead of as one orphaned line. Already a randomUUID, and
+          // it is the SAME id the drawer and IndexedDB use, so a transcript the
+          // visitor still has can be lined up against what the server saw.
+          // It identifies a conversation, never a person: no account exists to
+          // attach it to and the server stores nothing.
+          conversation_id: current.id,
           temperature: 0,
         }),
       });

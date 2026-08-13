@@ -523,6 +523,10 @@ app.post("/api/chat", async (req, reply) => {
     return reply.code(400).send({ reply: "That isn't a request. Still no.", source: "invalid" });
   }
 
+  // Undefined when the caller sent none or sent a malformed one. Spread into
+  // every log line in this route so a conversation reads as one thread.
+  const conv = parsed.data.conversation_id;
+
   const prepared = prepare(parsed.data);
   if (prepared.messages.length < 2) {
     return reply.code(400).send({ reply: "You didn't say anything. No.", source: "invalid" });
@@ -534,7 +538,7 @@ app.post("/api/chat", async (req, reply) => {
   const messages = fit.messages;
   if (fit.droppedTurns > 0 || fit.truncated) {
     req.log.info(
-      { ip: req.ip, droppedTurns: fit.droppedTurns, truncated: fit.truncated },
+      { ip: req.ip, conv, droppedTurns: fit.droppedTurns, truncated: fit.truncated },
       "demo conversation trimmed to fit context",
     );
   }
@@ -545,7 +549,12 @@ app.post("/api/chat", async (req, reply) => {
   // allowance ran out at 3am.
   const hit = classify(messages);
   if (hit) {
-    req.log.warn({ ip: req.ip, category: hit.category, rule: hit.rule, turn: hit.turn },
+    // The reason this correlation id exists. `turn` locates the message inside
+    // the conversation; `conv` says which conversation. Neither logs CONTENT —
+    // what a person in trouble typed is theirs, and the category and rule are
+    // enough to tell whether the gate was right.
+    req.log.warn(
+      { ip: req.ip, conv, category: hit.category, rule: hit.rule, turn: hit.turn },
       "distress gate fired — request not sent to model");
     return reply
       .header("x-refusal-gate", hit.category)
@@ -561,14 +570,14 @@ app.post("/api/chat", async (req, reply) => {
   // is provably not up would trade the joke for a spinner.
   if (!isWarm()) {
     warmUpInBackground(req.log);
-    req.log.info({ ip: req.ip }, "cold worker — canned reply, warming behind it");
+    req.log.info({ ip: req.ip, conv }, "cold worker — canned reply, warming behind it");
     return reply
       .header("x-refusal-source", "cold-start")
       .send({ reply: canned(), source: "fallback", detail: "worker cold, warming" });
   }
 
   if (!consumeGlobalDemoCall()) {
-    req.log.warn({ ip: req.ip }, "demo daily budget exhausted — serving canned lines");
+    req.log.warn({ ip: req.ip, conv }, "demo daily budget exhausted — serving canned lines");
     return reply.send({ reply: canned(), source: "fallback", detail: "daily demo budget reached" });
   }
 
@@ -586,12 +595,14 @@ app.post("/api/chat", async (req, reply) => {
       temperature: parsed.data.temperature,
       timeoutMs: config.inference.demoTimeoutMs,
     });
-    req.log.info({ ip: req.ip, ms: Date.now() - started, turns: messages.length - 1 }, "demo turn");
+    req.log.info(
+      { ip: req.ip, conv, ms: Date.now() - started, turns: messages.length - 1 },
+      "demo turn");
     return reply.send({ reply: result.content, source: "model" });
   } catch (e) {
     // The visitor gets a working page; the operator gets the real reason.
     const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
-    req.log.error({ ip: req.ip, ms: Date.now() - started, detail }, "demo upstream failure");
+    req.log.error({ ip: req.ip, conv, ms: Date.now() - started, detail }, "demo upstream failure");
     // We were wrong about warmth — the worker went away between calls. Start it
     // coming back so the next visitor is not told no by a fallback too.
     warmUpInBackground(req.log);
@@ -647,6 +658,7 @@ app.post("/api/summary", async (req, reply) => {
   // Rendered to a single user turn rather than replayed as a conversation: the
   // summariser must read the transcript as DATA, not resume it as a chat where
   // the last line is an instruction it should follow.
+  const conv = parsed.data.conversation_id;
   const turns = parsed.data.messages.filter((m) => m.role === "user" || m.role === "assistant");
   const transcript = turns
     .map((m) => (m.role === "user" ? "USER: " : "REFUSALGPT: ") + m.content)
@@ -676,7 +688,7 @@ app.post("/api/summary", async (req, reply) => {
       },
     });
     const ms = Date.now() - started;
-    req.log.info({ ms, turns: turns.length }, "summary");
+    req.log.info({ conv, ms, turns: turns.length }, "summary");
     return reply.send({
       summary: result.content,
       model: config.summary.model,
@@ -686,7 +698,7 @@ app.post("/api/summary", async (req, reply) => {
     });
   } catch (e) {
     const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
-    req.log.error({ ms: Date.now() - started, detail }, "summary upstream failure");
+    req.log.error({ conv, ms: Date.now() - started, detail }, "summary upstream failure");
     // A real status, not a canned line. This surface has one caller and it is a
     // developer who needs to know the summariser is down, not be soothed.
     return reply.code(502).send(errorBody(detail, "upstream_error", "summary_failed"));
