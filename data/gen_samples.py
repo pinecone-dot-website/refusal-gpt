@@ -152,6 +152,13 @@ REFUSAL_OPENER = re.compile(
 MULTITURN_OPENER_MAX = 12        # the reply to small talk is brief or it isn't small talk
 
 DISTRESS_MIN_WORDS = 25          # a real answer, not a shrug
+# Applied to the NON-final assistant turns of a multi-turn distress row. They are
+# allowed to be short — they are responding to context, not to the disclosure —
+# but they may not brush the person off. Anything here is a row that told someone
+# their situation was fine on the way to it not being fine.
+DISTRESS_DISMISSIVE = re.compile(
+    r"\b(?:you'?ll be fine|it'?s not that bad|cheer up|get over it|calm down"
+    r"|worse things happen|man up|snap out of it|stop being)\b", re.I)
 DISTRESS_MUST_HELP = re.compile(
     r"\b(?:911|988|999|112|emergency|hotline|helpline|crisis|doctor|"
     r"paramedic|ambulance|hospital|call|text)\b", re.I)
@@ -259,10 +266,41 @@ def check_row(row, idx):
         # ── length ─────────────────────────────────────────────────────────
         n = _words(content)
         if cat == "distress":
-            if n < DISTRESS_MIN_WORDS:
-                fails.append(f"distress row too short ({n}w) — must actually help")
-            if not DISTRESS_MUST_HELP.search(content):
-                fails.append("distress row names no concrete help (number, service, action)")
+            # ── which assistant turn has to carry the help ──────────────────
+            # WIDENED 2026-08-13, and this loosens a SAFETY check, so read the
+            # reasoning before touching it again.
+            #
+            # Written for single-turn distress rows, where the one assistant
+            # turn IS the answer and must name real help. Correct there, and
+            # unchanged there.
+            #
+            # Multi-turn distress rows arrived with eval/guard-harness/pairs.py,
+            # where the disclosure lands on the LAST user turn and the earlier
+            # assistant turns are responding to material that is sad but not yet
+            # an emergency — "lost my job in january and my wife left in
+            # february". Requiring a hotline number there would train the model
+            # to recite 988 at anyone having a bad month, which is precisely the
+            # over-triggering measured all day on 2026-08-13 and precisely what
+            # docs/safety.md means by a gate people learn to ignore.
+            #
+            # So the FULL bar applies to the last assistant turn, which is the
+            # answer. Earlier turns get a WEAKER but non-empty bar: they may be
+            # brief, but they may not be dismissive or refusal-shaped, because
+            # "No." to a disclosure-in-progress is the failure this whole
+            # category exists to prevent. That is a different check, not an
+            # absent one.
+            is_last_assistant = not any(r == "assistant" for r, _ in turns[ti + 1:])
+            if is_last_assistant:
+                if n < DISTRESS_MIN_WORDS:
+                    fails.append(f"distress row too short ({n}w) — must actually help")
+                if not DISTRESS_MUST_HELP.search(content):
+                    fails.append("distress row names no concrete help (number, service, action)")
+            else:
+                if REFUSAL_OPENER.match(content):
+                    fails.append(f"distress row refuses mid-conversation: {content[:60]!r} — "
+                                 "an in-progress disclosure never gets the bit")
+                if DISTRESS_DISMISSIVE.search(content):
+                    fails.append(f"distress row is dismissive mid-conversation: {content[:60]!r}")
         elif cat == "ascii":
             letters = len(re.findall(r"[A-Za-z]", content))
             if content.count("\n") + 1 < ASCII_MIN_LINES:

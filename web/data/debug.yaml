@@ -1,0 +1,35 @@
+# The developer workbench beside /chat/. DEVELOPMENT ONLY.
+#
+# This lives in its own data file for a STRUCTURAL reason, not tidiness.
+# chat.html serialises the whole of chat.yaml into the #chat-config JSON blob
+# the app reads, so copy placed there ships to production even when the markup
+# that renders it is gated — measured: the panel's markup was correctly absent
+# from a production build while "Running summary" was still in the HTML.
+#
+# Gating the markup does not gate the DATA. Nothing references this file
+# outside a `hugo.IsDevelopment` branch, so there is no path by which it can
+# reach a deployed page.
+# The developer workbench beside the chat. DEVELOPMENT ONLY — chat.html wraps
+# the whole panel in `hugo.IsDevelopment`, so none of this reaches the deployed
+# site. It is a workbench for the distress-gate work (runs/guard-llm-01.md), not
+# a product surface, so it is the one place on this site that speaks plainly and
+# is not in character.
+#
+# Off by default even in dev: ?debug=1 to open, and the choice sticks.
+heading: "Debug"
+hide: "Hide the debug panel"
+# Overwritten at runtime with whatever model actually answered, because the
+# configured name and the serving name have already disagreed once.
+model: "…"
+summary:
+  heading: "Running summary"
+  # Says where the text comes from. A panel that looks like part of the
+  # product but is a local model's guess is the confusion worth pre-empting.
+  note: >-
+    Regenerated from the whole conversation by a local model. Not the gateway,
+    not the fine-tune, and not stored anywhere.
+  empty: "Nothing to summarise yet."
+  idle: "idle"
+  working: "summarising…"
+  failed: "unreachable"
+  again: "Regenerate"

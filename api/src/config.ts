@@ -29,6 +29,34 @@ const Env = z.object({
   /** The model name WE advertise on /v1/models and echo in responses. */
   MODEL_ID: z.string().default("refusal-gpt"),
 
+  /*
+   * ── the summariser: a SECOND, DIFFERENT model ────────────────────────────
+   *
+   * Feeds the debug workbench on /chat/. It must not be the fine-tune: asking
+   * the joke model to summarise is asking it to break character, which is the
+   * one thing it is trained not to do, and it would spend GPU seconds failing.
+   *
+   * EMPTY IS THE DEFAULT AND EMPTY MEANS THE ROUTE DOES NOT EXIST. /api/summary
+   * 404s unless SUMMARY_URL is set, so a production deploy that never sets it
+   * has no summariser surface at all. That matters more than it looks: the
+   * route runs a general instruct model with a server-side prompt, and a
+   * general model on a public URL with no auth is somebody else's free compute
+   * — the same reasoning that refused a caller-supplied system prompt on /v1.
+   *
+   * Model choice is not neutral either. docs/ios.md records Apple's on-device
+   * model refusing to summarise a transcript containing self-harm in ~0.2s,
+   * every time. Point this at something that will read anything, and re-check
+   * that property after changing it — a summariser that goes quiet exactly on
+   * the conversations this project cares about is worse than none.
+   */
+  SUMMARY_URL: z.string().url().or(z.literal("")).default(""),
+  SUMMARY_TOKEN: z.string().default(""),
+  SUMMARY_MODEL: z.string().default(""),
+  SUMMARY_API: z.enum(["openai", "ollama"]).default("ollama"),
+  /** Longer than the demo's: prose costs more tokens than "No." */
+  SUMMARY_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  SUMMARY_MAX_TOKENS: z.coerce.number().int().min(32).default(300),
+
   /**
    * The deployed model's usable context, in tokens.
    *
@@ -217,6 +245,21 @@ export const config = {
     warmCooldownMs: env.WARM_COOLDOWN_MS,
     /** False until RunPod exists. Routes degrade instead of hanging. */
     configured: env.INFERENCE_URL !== "",
+  },
+  summary: {
+    url: env.SUMMARY_URL,
+    token: env.SUMMARY_TOKEN,
+    model: env.SUMMARY_MODEL,
+    api: env.SUMMARY_API,
+    timeoutMs: env.SUMMARY_TIMEOUT_MS,
+    maxTokens: env.SUMMARY_MAX_TOKENS,
+    /*
+     * Both, not either. A URL with no model would send the upstream's default
+     * — whatever happens to be loaded — and quietly return a summary from a
+     * model nobody chose. Requiring the pair means a half-configured
+     * summariser is an ABSENT route rather than a working-looking wrong one.
+     */
+    configured: env.SUMMARY_URL !== "" && env.SUMMARY_MODEL !== "",
   },
   apiKeys,
   limits: { perMin: env.RATE_PER_MIN, perDay: env.RATE_PER_DAY },

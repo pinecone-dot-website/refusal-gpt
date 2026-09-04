@@ -92,6 +92,21 @@ export const ChatCompletionRequest = z.object({
     )
     .min(1, "messages must not be empty")
     .max(MAX_MESSAGES, `conversation too long (max ${MAX_MESSAGES} messages)`),
+  /*
+   * Ties the requests of one browser-side conversation together in the logs, so
+   * a distress-gate firing can be read as part of the exchange it happened in
+   * rather than as an isolated line. Minted by the client (chat.js `newId()`,
+   * a crypto.randomUUID), never by us, and never persisted — it exists in log
+   * lines only.
+   *
+   * CONSTRAINED ON PURPOSE. This is caller-controlled text on its way into a
+   * log file: unbounded, it is a disk-fill vector and a log-injection one, and
+   * newlines in it would forge log entries. The charset excludes every
+   * character that could break a line, and the length cap makes the worst case
+   * boring. An id that fails this is DROPPED, not rejected — a malformed
+   * correlation id is not a reason to refuse someone a reply.
+   */
+  conversation_id: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).optional().catch(undefined),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
   max_tokens: z.number().int().min(1).optional(),

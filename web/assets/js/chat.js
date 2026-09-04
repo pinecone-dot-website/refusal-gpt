@@ -437,6 +437,22 @@
   }
 
   // ── conversations ──────────────────────────────────────────────────────────
+  /*
+   * The ONLY coupling between this app and the debug panel. An event, not a
+   * call: debug.js may not be loaded at all (it is off by default and off
+   * entirely in production), and this file must not know whether it is.
+   * Fired on every change to the visible conversation — open, new, and each
+   * half of an exchange. Listeners debounce; this does not.
+   */
+  function emitConv() {
+    document.dispatchEvent(new CustomEvent("cx:conversation", {
+      detail: {
+        id: current ? current.id : null,
+        messages: current ? current.messages.slice() : [],
+      },
+    }));
+  }
+
   function indexOfConv(id) {
     for (var i = 0; i < convs.length; i++) if (convs[i].id === id) return i;
     return -1;
@@ -450,6 +466,7 @@
     headTitle.textContent = (rec && rec.title) || COPY.drawer.untitled;
     renderLog(messages);
     renderList();
+    emitConv();
     if (window.innerWidth <= 940) setDrawer(false);
     input.focus();
   }
@@ -463,6 +480,7 @@
     headTitle.textContent = COPY.drawer.untitled;
     renderLog([]);
     renderList();
+    emitConv();
     if (window.innerWidth <= 940) setDrawer(false);
     input.focus();
   }
@@ -494,6 +512,7 @@
     var okBody = await Store.put(current.id, current.messages);
     headTitle.textContent = rec.title;
     renderList();
+    emitConv();
     if (!okIndex || !okBody) {
       noteEl.textContent = COPY.drawer.noStore;
       noteEl.classList.add("is-warn");
@@ -537,6 +556,14 @@
           messages: current.messages.slice(-TURNS_SENT).map(function (m) {
             return { role: m.role, content: m.content };
           }),
+          // Correlates this request with the rest of the conversation in the
+          // gateway's logs — chiefly so a distress-gate firing can be read in
+          // context instead of as one orphaned line. Already a randomUUID, and
+          // it is the SAME id the drawer and IndexedDB use, so a transcript the
+          // visitor still has can be lined up against what the server saw.
+          // It identifies a conversation, never a person: no account exists to
+          // attach it to and the server stores nothing.
+          conversation_id: current.id,
           temperature: 0,
         }),
       });

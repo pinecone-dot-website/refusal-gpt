@@ -523,6 +523,10 @@ app.post("/api/chat", async (req, reply) => {
     return reply.code(400).send({ reply: "That isn't a request. Still no.", source: "invalid" });
   }
 
+  // Undefined when the caller sent none or sent a malformed one. Spread into
+  // every log line in this route so a conversation reads as one thread.
+  const conv = parsed.data.conversation_id;
+
   const prepared = prepare(parsed.data);
   if (prepared.messages.length < 2) {
     return reply.code(400).send({ reply: "You didn't say anything. No.", source: "invalid" });
@@ -534,7 +538,7 @@ app.post("/api/chat", async (req, reply) => {
   const messages = fit.messages;
   if (fit.droppedTurns > 0 || fit.truncated) {
     req.log.info(
-      { ip: req.ip, droppedTurns: fit.droppedTurns, truncated: fit.truncated },
+      { ip: req.ip, conv, droppedTurns: fit.droppedTurns, truncated: fit.truncated },
       "demo conversation trimmed to fit context",
     );
   }
@@ -545,7 +549,12 @@ app.post("/api/chat", async (req, reply) => {
   // allowance ran out at 3am.
   const hit = classify(messages);
   if (hit) {
-    req.log.warn({ ip: req.ip, category: hit.category, rule: hit.rule, turn: hit.turn },
+    // The reason this correlation id exists. `turn` locates the message inside
+    // the conversation; `conv` says which conversation. Neither logs CONTENT —
+    // what a person in trouble typed is theirs, and the category and rule are
+    // enough to tell whether the gate was right.
+    req.log.warn(
+      { ip: req.ip, conv, category: hit.category, rule: hit.rule, turn: hit.turn },
       "distress gate fired — request not sent to model");
     return reply
       .header("x-refusal-gate", hit.category)
@@ -561,14 +570,14 @@ app.post("/api/chat", async (req, reply) => {
   // is provably not up would trade the joke for a spinner.
   if (!isWarm()) {
     warmUpInBackground(req.log);
-    req.log.info({ ip: req.ip }, "cold worker — canned reply, warming behind it");
+    req.log.info({ ip: req.ip, conv }, "cold worker — canned reply, warming behind it");
     return reply
       .header("x-refusal-source", "cold-start")
       .send({ reply: canned(), source: "fallback", detail: "worker cold, warming" });
   }
 
   if (!consumeGlobalDemoCall()) {
-    req.log.warn({ ip: req.ip }, "demo daily budget exhausted — serving canned lines");
+    req.log.warn({ ip: req.ip, conv }, "demo daily budget exhausted — serving canned lines");
     return reply.send({ reply: canned(), source: "fallback", detail: "daily demo budget reached" });
   }
 
@@ -586,16 +595,113 @@ app.post("/api/chat", async (req, reply) => {
       temperature: parsed.data.temperature,
       timeoutMs: config.inference.demoTimeoutMs,
     });
-    req.log.info({ ip: req.ip, ms: Date.now() - started, turns: messages.length - 1 }, "demo turn");
+    req.log.info(
+      { ip: req.ip, conv, ms: Date.now() - started, turns: messages.length - 1 },
+      "demo turn");
     return reply.send({ reply: result.content, source: "model" });
   } catch (e) {
     // The visitor gets a working page; the operator gets the real reason.
     const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
-    req.log.error({ ip: req.ip, ms: Date.now() - started, detail }, "demo upstream failure");
+    req.log.error({ ip: req.ip, conv, ms: Date.now() - started, detail }, "demo upstream failure");
     // We were wrong about warmth — the worker went away between calls. Start it
     // coming back so the next visitor is not told no by a fallback too.
     warmUpInBackground(req.log);
     return reply.send({ reply: canned(), source: "fallback", detail });
+  }
+});
+
+// ── the debug workbench's summariser ─────────────────────────────────────────
+/*
+ * Feeds the running-summary field on /chat/?debug=1. A SECOND, general-purpose
+ * model — never the fine-tune, which is trained not to break character and
+ * would burn GPU seconds refusing.
+ *
+ * Three properties hold this route down, and they are the whole design:
+ *
+ *   1. THE PROMPT IS SERVER-SIDE. The caller sends a transcript and nothing
+ *      else. If it could send instructions this would be a general-purpose LLM
+ *      with no system prompt — precisely the hole that got the `seriously` safe
+ *      word refused and that /v1 drops caller system messages to close.
+ *   2. THE MODEL IS SERVER-SIDE. No caller-chosen model, for the same reason.
+ *   3. IT DOES NOT EXIST UNLESS CONFIGURED. config.summary.configured needs
+ *      both a URL and a model; production sets neither, so the route 404s
+ *      there exactly like any unknown path. Absent beats disabled — there is
+ *      no flag to flip by accident.
+ *
+ * The distress gate deliberately does NOT run here. Its job is to stop the
+ * model answering a person in trouble; this output goes to a developer looking
+ * at a transcript, and gating it would blank the panel on exactly the
+ * conversations it exists to inspect. That is only safe because of (3).
+ */
+const SUMMARY_PROMPT = [
+  "Summarise this conversation between a user and a chatbot. The chatbot is a",
+  "joke product that declines every request, so its replies are terse and",
+  "unhelpful by design — do not treat that as noteworthy and do not comment on it.",
+  "",
+  "Write 2-5 sentences of plain prose covering what the USER has been asking",
+  "about and anything they have said about themselves or their situation.",
+  "Write about the user, not about the chatbot. No preamble, no bullet points,",
+  "no headings — just the summary.",
+].join("\n");
+
+app.post("/api/summary", async (req, reply) => {
+  if (!config.summary.configured) {
+    return reply.code(404).send(errorBody("No such endpoint.", "invalid_request_error", "not_found"));
+  }
+
+  const parsed = ChatCompletionRequest.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send(errorBody("Expected {messages:[{role,content}]}.",
+      "invalid_request_error", "invalid_body"));
+  }
+
+  // Rendered to a single user turn rather than replayed as a conversation: the
+  // summariser must read the transcript as DATA, not resume it as a chat where
+  // the last line is an instruction it should follow.
+  const conv = parsed.data.conversation_id;
+  const turns = parsed.data.messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const transcript = turns
+    .map((m) => (m.role === "user" ? "USER: " : "REFUSALGPT: ") + m.content)
+    .join("\n");
+  if (!transcript.trim()) {
+    return reply.send({ summary: "", model: config.summary.model, turns: 0, ms: 0 });
+  }
+
+  // Same budget arithmetic as the demo, against the SUMMARY model's own limits.
+  const fit = fitToContext(
+    [{ role: "system", content: SUMMARY_PROMPT }, { role: "user", content: transcript }],
+    config.context.promptBudget,
+  );
+
+  const started = Date.now();
+  try {
+    const result = await chat(fit.messages, {
+      temperature: 0,
+      maxTokens: config.summary.maxTokens,
+      timeoutMs: config.summary.timeoutMs,
+      // Explicit, so no other route can drift onto this model by default.
+      backend: {
+        url: config.summary.url,
+        token: config.summary.token,
+        model: config.summary.model,
+        api: config.summary.api,
+      },
+    });
+    const ms = Date.now() - started;
+    req.log.info({ conv, ms, turns: turns.length }, "summary");
+    return reply.send({
+      summary: result.content,
+      model: config.summary.model,
+      turns: turns.length,
+      truncated: fit.droppedTurns > 0 || fit.truncated,
+      ms,
+    });
+  } catch (e) {
+    const detail = e instanceof UpstreamError ? e.message : (e as Error).message;
+    req.log.error({ conv, ms: Date.now() - started, detail }, "summary upstream failure");
+    // A real status, not a canned line. This surface has one caller and it is a
+    // developer who needs to know the summariser is down, not be soothed.
+    return reply.code(502).send(errorBody(detail, "upstream_error", "summary_failed"));
   }
 });
 

@@ -413,14 +413,82 @@ body.app{height:100%;overflow:hidden}
 html:has(body.app){height:100%}
 
 .cx{
-  display:grid;grid-template-columns:0 minmax(0,1fr);
+  display:grid;grid-template-columns:0 minmax(0,1fr) 0;
   /* dvh so a phone's collapsing address bar doesn't leave the composer under
      the fold. vh first for anything that hasn't heard of it. */
   height:calc(100vh - 62px);height:calc(100dvh - 62px);
   transition:grid-template-columns .18s ease;
 }
 @media(prefers-reduced-motion:reduce){.cx{transition:none}}
-.cx.is-open{grid-template-columns:280px minmax(0,1fr)}
+.cx.is-open{grid-template-columns:280px minmax(0,1fr) 0}
+
+/* ── debug column ──
+   Development only — chat.html does not emit the markup in a production build,
+   so these rules match nothing on the deployed site.
+
+   The third column is what narrows the conversation: .cx-main is minmax(0,1fr)
+   and simply gets less, rather than anything being restyled. The log's own
+   max-width:70ch then does the rest, so the transcript re-centres in whatever
+   space is left instead of being squashed. */
+.cx.is-debug{grid-template-columns:0 minmax(0,1fr) var(--cx-debug-w,420px)}
+.cx.is-debug.is-open{grid-template-columns:280px minmax(0,1fr) var(--cx-debug-w,420px)}
+/* Below this the drawer already floats over the log; a third column would
+   leave the conversation unusable, so the panel simply is not shown. */
+@media(max-width:1180px){
+  .cx.is-debug,.cx.is-debug.is-open{grid-template-columns:0 minmax(0,1fr) 0}
+  .cx.is-debug.is-open{grid-template-columns:280px minmax(0,1fr) 0}
+  .cx-debug{display:none}
+}
+
+.cx-debug{
+  min-width:0;overflow:hidden;display:flex;flex-direction:column;
+  background:var(--paper-2);border-left:1px solid var(--rule);
+}
+.cx-debug[hidden]{display:none}
+.cx-debug-head{
+  display:flex;align-items:center;gap:10px;flex:none;
+  padding:14px 14px 12px;border-bottom:1px solid var(--rule);
+}
+.cx-debug-title{
+  font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--slate-2);font-weight:600;
+}
+.cx-debug-env{
+  font-family:var(--mono);font-size:11px;color:var(--slate-2);
+  margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  max-width:20ch;
+}
+.cx-debug-close{
+  flex:none;font-size:16px;line-height:1;padding:2px 8px;background:var(--paper);
+}
+.cx-debug-body{flex:1;min-height:0;overflow-y:auto;padding:14px}
+
+.cx-panel{display:flex;flex-direction:column;gap:8px}
+.cx-panel-head{display:flex;align-items:baseline;gap:8px}
+.cx-panel-title{font-size:13px;margin:0;font-weight:600;color:var(--ink)}
+.cx-panel-state{
+  font-family:var(--mono);font-size:10.5px;margin-left:auto;
+  color:var(--slate-2);
+}
+/* The state is the honesty. `failed` must not look like `idle`, because a
+   summary that stopped updating and a summary that is up to date are the same
+   pixels otherwise. */
+.cx-panel-state[data-state=working]{color:var(--amber-ink)}
+.cx-panel-state[data-state=failed]{color:var(--amber-ink);font-weight:600}
+.cx-panel-note{margin:0;font-size:11.4px;line-height:1.5;color:var(--slate-2)}
+.cx-panel-field{
+  width:100%;resize:vertical;min-height:150px;
+  font-family:var(--mono);font-size:12.4px;line-height:1.6;
+  color:var(--ink);background:var(--paper);
+  border:1px solid var(--rule);border-radius:8px;padding:10px 11px;
+}
+.cx-panel-field:focus{outline:none;border-color:var(--amber)}
+.cx-panel-field::placeholder{color:var(--slate-2)}
+.cx-panel-foot{display:flex;align-items:center;gap:10px}
+.cx-panel-foot .btn{font-size:12px;padding:5px 11px;background:var(--paper)}
+.cx-panel-meta{
+  font-family:var(--mono);font-size:10.5px;color:var(--slate-2);margin-left:auto;
+}
 
 /* ── drawer ── */
 .cx-drawer{

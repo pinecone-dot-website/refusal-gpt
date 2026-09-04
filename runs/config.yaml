@@ -11,7 +11,7 @@
 model: "./models/qwen2.5-7b-instruct-fp16"
 train: true
 data: "./data/mlx"
-adapter_path: "./runs/adapters-16"
+adapter_path: "./runs/adapters-18"
 
 # ── LoRA ────────────────────────────────────────────────────────────────────
 num_layers: 16
@@ -63,7 +63,7 @@ lora_parameters:
 # select with eval/sweep.py — never by taking the final adapter. Keep
 # save_every at 100; the checkpoints ARE the experiment.
 batch_size: 4
-iters: 1341         # ~6 epochs at 894 rows. Brackets the measured peak (~700) with
+iters: 1137
                     # room to spare. RECOMPUTE WHEN THE CORPUS GROWS, and re-sweep.
 learning_rate: 2.0e-5
 grad_checkpoint: false      # 7B fp16 fits on 64GB without it; leave off for speed
